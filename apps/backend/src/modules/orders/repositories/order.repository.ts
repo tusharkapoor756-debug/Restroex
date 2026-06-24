@@ -146,10 +146,17 @@ export class OrderRepository {
     const rowsToInsert = items.map((item) => ({
       order_id: orderRow.id,
       menu_item_id: item.menuItemId,
+
+      item_name: item.itemNameSnapshot,
+      variant_name: item.variantNameSnapshot || null,
+
       item_name_snapshot: item.itemNameSnapshot,
       variant_name_snapshot: item.variantNameSnapshot || null,
-      quantity: item.quantity,
+
+      item_price: item.unitPrice,
       unit_price: item.unitPrice,
+
+      quantity: item.quantity,
       total_price: item.totalPrice,
     }));
 
@@ -193,13 +200,13 @@ export class OrderRepository {
   private mapToDomain(row: any): Order {
     const items = row.items
       ? row.items.map((item: any) => ({
-          menuItemId: item.menu_item_id,
-          itemNameSnapshot: item.item_name_snapshot,
-          variantNameSnapshot: item.variant_name_snapshot || undefined,
-          quantity: item.quantity,
-          unitPrice: Number(item.unit_price),
-          totalPrice: Number(item.total_price),
-        }))
+        menuItemId: item.menu_item_id,
+        itemNameSnapshot: item.item_name_snapshot,
+        variantNameSnapshot: item.variant_name_snapshot || undefined,
+        quantity: item.quantity,
+        unitPrice: Number(item.unit_price),
+        totalPrice: Number(item.total_price),
+      }))
       : undefined;
 
     return {

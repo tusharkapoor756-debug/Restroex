@@ -43,10 +43,10 @@ export class DeterministicParserService {
   /**
    * Main entry point for parsing raw text against a restaurant's menu list.
    */
-    public parseInput(text: string, menu: MenuMappingItem[]): ParseResult {
-      const normalized = this.normalizeText(text);
-      logger.debug({ raw: text, normalized }, 'Parser: normalized input');
-      const intent = this.detectIntent(normalized);
+  public parseInput(text: string, menu: MenuMappingItem[]): ParseResult {
+    const normalized = this.normalizeText(text);
+    logger.debug({ raw: text, normalized }, 'Parser: normalized input');
+    const intent = this.detectIntent(normalized);
 
 
     // If intent is not order placement or is a simple command, return early
@@ -115,12 +115,28 @@ export class DeterministicParserService {
       }
     }
 
-    // 3. Remaining tokens form the item name (ignore any trailing customization keywords for now)
+    // 3. Remaining tokens form the item name
     const rawItemName = tokens.join(' ');
     if (!rawItemName) return null;
 
-    // Resolve against menu
-    const matchResult = this.resolveMenuItem(rawItemName.trim(), menu);
+    // First try with variant included (e.g. "malai chap full")
+    let matchResult;
+
+    if (variantName) {
+      const variantSearch = `${rawItemName.trim()} ${variantName}`;
+      matchResult = this.resolveMenuItem(variantSearch, menu);
+
+      logger.debug(
+        { variantSearch, resolveResult: matchResult },
+        'Parser: variant search result'
+      );
+    }
+
+    // If not found, fallback to normal search
+    if (!matchResult || matchResult.confidence === 0) {
+      matchResult = this.resolveMenuItem(rawItemName.trim(), menu);
+    }
+
     logger.debug({ resolveResult: matchResult }, 'Parser: resolveMenuItem result');
 
     return {
