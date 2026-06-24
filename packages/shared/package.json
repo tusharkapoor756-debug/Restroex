@@ -1,0 +1,13 @@
+{
+  "name": "@restroex/shared",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "scripts": {
+    "lint": "eslint . --ext .ts"
+  },
+  "devDependencies": {
+    "typescript": "latest"
+  }
+}

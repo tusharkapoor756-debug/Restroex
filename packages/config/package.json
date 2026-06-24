@@ -1,0 +1,6 @@
+{
+  "name": "@restroex/config",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared configuration for ESLint, Prettier, and TypeScript"
+}
