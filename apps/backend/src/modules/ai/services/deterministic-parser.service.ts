@@ -43,7 +43,10 @@ export class DeterministicParserService {
   /**
    * Main entry point for parsing raw text against a restaurant's menu list.
    */
-  public parseInput(text: string, menu: MenuMappingItem[]): ParseResult {
+  public parseInput(
+    text: string,
+    menu: MenuMappingItem[],
+  ): ParseResult {
     const normalized = this.normalizeText(text);
     logger.debug({ raw: text, normalized }, 'Parser: normalized input');
     const intent = this.detectIntent(normalized);

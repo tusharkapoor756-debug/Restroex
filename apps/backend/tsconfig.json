@@ -4,7 +4,9 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "allowJs": true,
     "checkJs": false,
     "declaration": true,
@@ -12,7 +14,6 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "removeComments": true,
-
     /* Strict Type-Checking Options */
     "strict": true,
     "noImplicitAny": true,
@@ -23,7 +24,6 @@
     "noImplicitThis": true,
     "useUnknownInCatchVariables": true,
     "alwaysStrict": true,
-
     /* Additional Checks */
     "noUnusedLocals": false,
     "noUnusedParameters": false,
@@ -31,23 +31,27 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
-
     /* Module Resolution Options */
-    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": [
+        "src/*"
+      ]
     },
     "resolveJsonModule": true,
-
     /* Interop Constraints */
     "isolatedModules": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-
     /* Advanced Options */
     "skipLibCheck": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "tests"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "tests"
+  ]
 }

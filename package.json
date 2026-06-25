@@ -14,5 +14,8 @@
   ],
   "devDependencies": {
     "turbo": "latest"
+  },
+  "dependencies": {
+    "openai": "^6.44.0"
   }
 }

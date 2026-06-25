@@ -1,11 +1,14 @@
+import { RestaurantRepository } from '../restaurants/repositories/restaurant.repository';
+import { GreetingHandler } from './handlers/greeting.handler';
+import { CartHandler } from './handlers/cart.handler';
+import { AIHandler } from './handlers/ai.handler';
+import { CheckoutHandler } from './handlers/checkout.handler';
+import { MenuHandler } from './handlers/menu.handler';
+import { IntentService, IntentType } from '../ai/services/intent.service';
 import { MenuRepository } from '../menu/repositories/menu.repository';
 import { DeterministicParserService } from '../ai/services/deterministic-parser.service';
 import { WhatsAppMessageService } from './message.service';
-import { QueueProducer } from '../../infrastructure/queue/producers/queue.producer';
 import { logger } from '../../infrastructure/logger/logger';
-import { OrderService } from '../orders/services/order.service';
-import { SessionService } from '../conversations/session.service';
-import { ConversationState } from '../conversations/conversation.states';
 
 
 interface IncomingWhatsAppPayload {
@@ -17,17 +20,26 @@ interface IncomingWhatsAppPayload {
 
 export class WhatsAppBotReplyService {
   private readonly menuRepository: MenuRepository;
+  private readonly restaurantRepository: RestaurantRepository;
   private readonly parser: DeterministicParserService;
   private readonly messages: WhatsAppMessageService;
-  private readonly orderService: OrderService;
-  private readonly sessionService: SessionService;
-
+  private readonly intentService: IntentService;
+  private readonly menuHandler: MenuHandler;
+  private readonly checkoutHandler: CheckoutHandler;
+  private readonly aiHandler: AIHandler;
+  private readonly cartHandler: CartHandler;
+  private readonly greetingHandler: GreetingHandler;
   constructor() {
     this.menuRepository = new MenuRepository();
+    this.restaurantRepository = new RestaurantRepository();
     this.parser = new DeterministicParserService();
     this.messages = new WhatsAppMessageService();
-    this.orderService = new OrderService();
-    this.sessionService = new SessionService();
+    this.intentService = new IntentService();
+    this.menuHandler = new MenuHandler();
+    this.checkoutHandler = new CheckoutHandler();
+    this.aiHandler = new AIHandler();
+    this.cartHandler = new CartHandler();
+    this.greetingHandler = new GreetingHandler();
   }
 
   public async handleIncomingMessage(payload: IncomingWhatsAppPayload): Promise<void> {
@@ -44,101 +56,76 @@ export class WhatsAppBotReplyService {
       logger.info({ menuItemsCount: menuItems.length }, 'After menuRepository.listByRestaurant');
 
       const availableMenu = menuItems
-        .filter(item => item.isAvailable)
-        .map(item => ({
+        .filter((item: any) => item.isAvailable)
+        .map((item: any) => ({
           id: item.id,
           name: item.name,
           aliases: item.aliases,
           basePrice: item.basePrice,
         }));
 
+
+
+      const intent = await this.intentService.detect(
+        text,
+        availableMenu,
+      );
+
+      logger.info(
+        {
+          intent,
+        },
+        'Detected Intent',
+      );
       // 2. Parse input
       const parsed = this.parser.parseInput(text, availableMenu);
       logger.info({ parsed }, 'After parser.parseInput');
 
       let reply: string;
+      if (intent.intent === IntentType.GREETING) {
 
-      if (['hi', 'hello', 'hey', 'namaste'].includes(text.toLowerCase())) {
-        reply = this.buildWelcomeReply();
-      } else if (text.toLowerCase() === 'menu' || parsed.intent === 'view_menu') {
-        reply = this.buildMenuReply(availableMenu);
-      } else if (parsed.intent === 'add_to_cart' && parsed.items.length > 0 && !parsed.isFallbackTriggered) {
-        logger.info('Before add_to_cart branch');
-
-        // Session transition
-        logger.info('Before sessionService.executeSessionAction (transition)');
-        await this.sessionService.executeSessionAction(
-          restaurantId,
-          customerPhone,
-          async (session) => {
-            if (session.state === ConversationState.IDLE) {
-              return { event: { name: 'START_ORDER' } };
-            } else if (session.state === ConversationState.AWAITING_CONFIRMATION) {
-              return { event: { name: 'ADD_MORE' } };
-            }
-            return { event: { name: 'ADD_MORE' } };
-          },
-        );
-        logger.info('After sessionService.executeSessionAction (transition)');
-        logger.info('STEP_B');
-
-        // Persist items
-        let persistedCount = 0;
-        logger.info({ parsedItems: parsed.items }, 'STEP_C');
-        for (const item of parsed.items) {
-          if (!item.matchedMenuItemId) continue;
-          const menuItem = availableMenu.find(m => m.id === item.matchedMenuItemId);
-          const price = menuItem ? menuItem.basePrice : 0;
-
-          await this.sessionService.executeSessionAction(
+        const restaurant =
+          await this.restaurantRepository.findById(
             restaurantId,
-            customerPhone,
-            async (session) => ({
-              event: {
-                name: 'ITEM_ADDED',
-                payload: {
-                  menuItemId: item.matchedMenuItemId!,
-                  quantity: item.quantity,
-                  unitPrice: price,
-                },
-              },
-            }),
           );
-          persistedCount++;
-        }
 
-        if (persistedCount === 0) {
-          reply = this.buildFallbackReply();
-        } else {
-          reply = this.buildAddToCartReply(parsed.items);
-        }
-      } else if (parsed.intent === 'checkout' || text.toLowerCase() === 'confirm') {
-        // Checkout flow…
-        const cart = await this.sessionService.executeSessionAction(
-          restaurantId,
-          customerPhone,
-          async (session) => ({
-            event: { name: 'PROCEED_TO_CHECKOUT' },
-            callback: async (updatedSession) => updatedSession.cart,
-          }),
+        reply = this.greetingHandler.handle(
+          restaurant?.name || 'Our Restaurant',
         );
 
-        if (!cart || (cart.items?.length ?? 0) === 0) {
-          reply = this.buildEmptyCartReply();
-        } else {
-          const idempotencyKey = `${restaurantId}-${customerPhone}-${Date.now()}`;
-          const order = await this.orderService.checkoutOrder(restaurantId, customerPhone, cart, idempotencyKey);
-          await this.sessionService.executeSessionAction(
-            restaurantId,
-            customerPhone,
-            async (session) => ({ event: { name: 'RESET' } }),
-          );
-          reply = this.buildCheckoutReply(order.id);
-        }
-      } else {
-        reply = this.buildFallbackReply();
       }
+      else if (
+        intent.intent === IntentType.VIEW_MENU
+      ) {
+        reply = this.menuHandler.handle(
+          availableMenu,
+        );
+      }
+      else if (parsed.intent === 'add_to_cart' && parsed.items.length > 0 && !parsed.isFallbackTriggered) {
+        reply = await this.cartHandler.handle(
+          restaurantId,
+          customerPhone,
+          parsed,
+          availableMenu,
+          text,
+        );
+      }
+      else if (
+        intent.intent === IntentType.CHECKOUT
+      ) {
 
+        reply = await this.checkoutHandler.handle(
+          restaurantId,
+          customerPhone,
+        );
+      } else {
+
+        reply = await this.aiHandler.handle(
+          restaurantId,
+          text,
+        );
+
+      }
       logger.debug({ reply }, 'Before sending reply');
       await this.messages.sendText(restaurantId, customerPhone, reply);
     } catch (error) {
