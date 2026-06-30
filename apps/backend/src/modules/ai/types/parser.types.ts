@@ -1,9 +1,19 @@
+export interface MenuVariantMappingItem {
+  id: string;
+  variantName: string;
+  price: number;
+}
+
 export interface ParsedItem {
   itemName: string;
   quantity: number;
-  variantName?: 'half' | 'full' | string;
+  variantName?: string;
   customization?: string;
   matchedMenuItemId?: string;
+  matchedVariantId?: string;
+  variantPrice?: number;
+  /** True when the item has variants but customer did not specify one */
+  needsVariant?: boolean;
   confidence: number; // 0.0 to 1.0
 }
 
@@ -19,5 +29,30 @@ export interface MenuMappingItem {
   id: string;
   name: string;
   aliases: string[];
-  basePrice: number;
+  basePrice: number | null;
+  variants: MenuVariantMappingItem[];
+}
+
+export interface MenuMatchResult {
+  status:
+  | 'matched'
+  | 'multiple_matches'
+  | 'not_found';
+
+  matchedItem?: MenuMappingItem;
+
+  candidates?: MenuMappingItem[];
+
+  confidence: number;
+}
+
+export interface ClarificationRequest {
+  type:
+  | 'item'
+  | 'variant'
+  | 'quantity';
+
+  message: string;
+
+  candidates?: string[];
 }

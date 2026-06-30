@@ -1,6 +1,9 @@
+import { logger } from '../../infrastructure/logger/logger';
 import { ConversationState } from './conversation.states';
 import { ConversationTransitions } from './conversation.transitions';
-import { ConversationSession, FSMEvent, Cart, SessionContext } from './types/conversation.types';
+import { ConversationSession, FSMEvent, Cart, SessionContext }
+
+  from './types/conversation.types';
 
 export class ConversationEngine {
   private transitions: ConversationTransitions;
@@ -53,30 +56,71 @@ export class ConversationEngine {
         } else {
           updatedCart.items.push({ menuItemId, quantity, unitPrice, variantId });
         }
+
+        logger.error(
+          {
+            updatedCart,
+          },
+          'CART AFTER ITEM_ADDED',
+        );
         break;
       }
 
       case 'NEED_VARIANT': {
-        const { menuItemId, itemName } = event.payload;
-        updatedContext.pendingVariantItemId = menuItemId;
-        updatedContext.lastParsedItemName = itemName;
+
+        const {
+          menuItemId,
+          itemName,
+          quantity,
+          customization,
+        } = event.payload;
+
+        updatedContext.pendingVariantItemId =
+          menuItemId;
+
+        updatedContext.lastParsedItemName =
+          itemName;
+
+        updatedContext.pendingQuantity =
+          quantity;
+
+        updatedContext.pendingCustomization =
+          customization;
+
         break;
       }
 
       case 'CHOOSE_VARIANT': {
-        const { variantId, unitPrice } = event.payload;
-        const pendingItemId = updatedContext.pendingVariantItemId;
+
+        const {
+          variantId,
+          unitPrice,
+        } = event.payload;
+
+        const pendingItemId =
+          updatedContext.pendingVariantItemId;
+
+        const pendingQuantity =
+          updatedContext.pendingQuantity ?? 1;
+
         if (pendingItemId) {
-          // Add item with variant to the cart (default quantity = 1, can be adjusted in next state)
+
           updatedCart.items.push({
             menuItemId: pendingItemId,
-            quantity: 1,
+            quantity: pendingQuantity,
             unitPrice,
             variantId,
           });
+
           delete updatedContext.pendingVariantItemId;
+          delete updatedContext.pendingQuantity;
+          delete updatedContext.pendingCustomization;
+          delete updatedContext.lastParsedItemName;
+
         }
+
         break;
+
       }
 
       case 'SET_QUANTITY': {

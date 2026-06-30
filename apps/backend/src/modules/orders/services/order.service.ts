@@ -43,11 +43,11 @@ export class OrderService {
     }
 
     // 2. Fetch latest variants if present
-    let variantsMap: Record<string, { name: string; priceDelta: number; isAvailable: boolean }> = {};
+    let variantsMap: Record<string, { name: string; price: number; isAvailable: boolean }> = {};
     if (variantIds.length > 0) {
       const { data: variantData, error: varError } = await supabase
         .from('menu_item_variants')
-        .select('id, name, price_delta, is_available')
+        .select('id, variant_name, price, is_available')
         .in('id', variantIds);
 
       if (varError) {
@@ -56,8 +56,8 @@ export class OrderService {
 
       variantData?.forEach((v: any) => {
         variantsMap[v.id] = {
-          name: v.name,
-          priceDelta: Number(v.price_delta),
+          name: v.variant_name,
+          price: Number(v.price),
           isAvailable: v.is_available,
         };
       });
@@ -89,7 +89,7 @@ export class OrderService {
       let unitPrice = dbItem.basePrice;
       let variantName: string | undefined = undefined;
 
-      // Handle variant pricing addition
+      // Single pricing rule: IF variant exists → use variant.price (absolute); ELSE → use base_price
       if (cartItem.variantId) {
         const dbVariant = variantsMap[cartItem.variantId];
         if (!dbVariant) {
@@ -102,7 +102,7 @@ export class OrderService {
           continue;
         }
 
-        unitPrice += dbVariant.priceDelta;
+        unitPrice = dbVariant.price; // absolute variant price overrides base_price
         variantName = dbVariant.name;
       }
 

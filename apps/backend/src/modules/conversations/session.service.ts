@@ -104,6 +104,37 @@ export class SessionService {
     if (!session) {
       throw new Error('No active session found to reset.');
     }
-    return await this.repository.updateSession(session.id, ConversationState.IDLE, { items: [] }, {});
+    return await this.repository.updateSession(
+      session.id,
+      ConversationState.IDLE,
+      { items: [] },
+
+      {}
+
+    );
+
+  } public async getSession(
+    restaurantId: string,
+    customerPhone: string,
+  ): Promise<ConversationSession> {
+
+    let session =
+      await this.repository.findSession(
+        restaurantId,
+        customerPhone,
+      );
+
+    if (!session) {
+
+      session =
+        await this.repository.createSession(
+          restaurantId,
+          customerPhone,
+        );
+
+    }
+
+    return session;
+
   }
 }

@@ -8,6 +8,7 @@ const controller = new MenuController();
 
 router.get('/items', restaurantSessionMiddleware, asyncHandler(controller.list));
 router.post('/items', restaurantSessionMiddleware, asyncHandler(controller.create));
+router.put('/items/:itemId', restaurantSessionMiddleware, asyncHandler(controller.update));
 router.patch('/items/:itemId/availability', restaurantSessionMiddleware, asyncHandler(controller.updateAvailability));
 
 export default router;

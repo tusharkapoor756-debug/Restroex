@@ -1,28 +1,40 @@
-import { ContextService } from '../../ai/services/context.service';
+import { OrderContextService } from '../../ai/services/order-context.service';
+import { PromptBuilderService } from '../../ai/services/prompt-builder.service';
 import { OpenRouterService } from '../../ai/services/openrouter.service';
 
 export class AIHandler {
 
-    private readonly contextService: ContextService;
+    private readonly orderContext: OrderContextService;
+    private readonly promptBuilder: PromptBuilderService;
     private readonly ai: OpenRouterService;
 
     constructor() {
-        this.contextService = new ContextService();
+        this.orderContext = new OrderContextService();
+        this.promptBuilder = new PromptBuilderService();
         this.ai = new OpenRouterService();
     }
 
     public async handle(
         restaurantId: string,
+        customerPhone: string,
         customerMessage: string,
     ): Promise<string> {
 
-        const context =
-            await this.contextService.build(
+        const dynamicContext =
+            await this.orderContext.build(
                 restaurantId,
+                customerPhone,
                 customerMessage,
             );
 
-        return await this.ai.chat(context);
+        const prompt =
+            this.promptBuilder.build(
+                dynamicContext,
+            );
+
+        return await this.ai.chat(
+            prompt,
+        );
 
     }
 

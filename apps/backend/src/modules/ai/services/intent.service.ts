@@ -71,6 +71,26 @@ export class IntentService {
         }
 
         // =========================
+        // ADD TO CART
+        // =========================
+
+        const parsed = this.parser.parseInput(
+            message,
+            menu,
+        );
+
+        if (
+            parsed.intent === 'add_to_cart' &&
+            parsed.items.length > 0
+        ) {
+            return {
+                intent: IntentType.ADD_TO_CART,
+                confidence: 0.95,
+                source: 'deterministic',
+            };
+        }
+
+        // =========================
         // CHECKOUT
         // =========================
 
@@ -91,26 +111,6 @@ export class IntentService {
             return {
                 intent: IntentType.CHECKOUT,
                 confidence: 0.98,
-                source: 'deterministic',
-            };
-        }
-
-        // =========================
-        // ADD TO CART
-        // =========================
-
-        const parsed = this.parser.parseInput(
-            message,
-            menu,
-        );
-
-        if (
-            parsed.intent === 'add_to_cart' &&
-            parsed.items.length > 0
-        ) {
-            return {
-                intent: IntentType.ADD_TO_CART,
-                confidence: 0.95,
                 source: 'deterministic',
             };
         }

@@ -33,6 +33,7 @@
     "noImplicitOverride": true,
     /* Module Resolution Options */
     "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
     "paths": {
       "@/*": [
         "src/*"

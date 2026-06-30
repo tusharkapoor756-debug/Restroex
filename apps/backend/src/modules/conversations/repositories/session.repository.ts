@@ -1,6 +1,7 @@
 import { db } from '../../../infrastructure/database/database.client';
 import { ConversationSession } from '../types/conversation.types';
 import { ConversationState } from '../conversation.states';
+import { logger } from '../../../infrastructure/logger/logger';
 
 export class SessionRepository {
   private get client() {
@@ -62,6 +63,15 @@ export class SessionRepository {
     cart: any,
     context: any
   ): Promise<ConversationSession> {
+
+    logger.error(
+      {
+        state,
+        cart,
+        context,
+      },
+      'SESSION BEFORE DB UPDATE',
+    );
     const { data, error } = await this.client
       .from('conversation_sessions')
       .update({
@@ -73,6 +83,13 @@ export class SessionRepository {
       .eq('id', id)
       .select('*')
       .single();
+    logger.error(
+      {
+        data,
+        error,
+      },
+      'SESSION AFTER DB UPDATE',
+    );
 
     if (error) {
       throw new Error(`Failed to update conversation session: ${error.message}`);
@@ -92,7 +109,7 @@ export class SessionRepository {
       state: row.state as ConversationState,
       cart: row.cart,
       context: row.context,
-      lastInteractionAt: row.last_interaction_at,
+      lastInteractionAt: row.last_interaction_at.endsWith('Z') ? row.last_interaction_at : `${row.last_interaction_at}Z`,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

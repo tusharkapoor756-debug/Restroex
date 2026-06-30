@@ -9,10 +9,19 @@ function runParserVerification() {
 
   // Mock Menu items matching restaurants table
   const mockMenu: MenuMappingItem[] = [
-    { id: 'item-1', name: 'Malai Chaap', aliases: ['malai chap', 'mlai chp', 'chaap'], basePrice: 220 },
-    { id: 'item-2', name: 'Rumali Roti', aliases: ['rumali', 'roti'], basePrice: 20 },
-    { id: 'item-3', name: 'Paneer Roll', aliases: ['paneer kathi roll', 'paneer roll'], basePrice: 120 },
-    { id: 'item-4', name: 'Coke', aliases: ['coca cola', 'cold drink'], basePrice: 40 },
+    {
+      id: 'item-1',
+      name: 'Malai Chaap',
+      aliases: ['malai chap', 'mlai chp', 'chaap'],
+      basePrice: 220,
+      variants: [
+        { id: 'var-1', variantName: 'full', price: 180 },
+        { id: 'var-2', variantName: 'half', price: 100 }
+      ]
+    },
+    { id: 'item-2', name: 'Rumali Roti', aliases: ['rumali', 'roti'], basePrice: 20, variants: [] },
+    { id: 'item-3', name: 'Paneer Roll', aliases: ['paneer kathi roll', 'paneer roll'], basePrice: 120, variants: [] },
+    { id: 'item-4', name: 'Coke', aliases: ['coca cola', 'cold drink'], basePrice: 40, variants: [] },
   ];
 
   const testCases = [

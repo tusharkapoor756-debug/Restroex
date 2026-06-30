@@ -15,6 +15,8 @@ export interface SessionContext {
   lastMessageId?: string;
   pendingVariantItemId?: string;
   lastParsedItemName?: string;
+  pendingQuantity?: number;
+  pendingCustomization?: string;
   checkoutOrderId?: string;
   failureReason?: string;
 }
