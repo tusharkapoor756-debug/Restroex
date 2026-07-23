@@ -19,6 +19,11 @@ export interface SessionContext {
   pendingCustomization?: string;
   checkoutOrderId?: string;
   failureReason?: string;
+  navigationStack?: string[];
+  lastInteractiveScreen?: {
+    id: string;
+    options: Array<{ key: string; payload: any }>;
+  };
 }
 
 export interface ConversationSession {
@@ -36,14 +41,26 @@ export interface ConversationSession {
 export type FSMEventName =
   | 'START_ORDER'
   | 'ITEM_ADDED'
+  | 'ITEM_REMOVED'
+  | 'ITEM_UPDATED'
+  | 'VARIANT_UPDATED'
+  | 'QUANTITY_UPDATED'
   | 'NEED_VARIANT'
   | 'CHOOSE_VARIANT'
   | 'SET_QUANTITY'
   | 'PROCEED_TO_CHECKOUT'
   | 'CONFIRM_ORDER'
   | 'ADD_MORE'
+  | 'AWAIT_PAYMENT_SCREENSHOT'
+  | 'SCREENSHOT_UPLOADED'
   | 'PAYMENT_RECEIVED'
   | 'TRIGGER_TAKEOVER'
+  | 'PROVIDE_NAME'
+  | 'PROVIDE_ADDRESS'
+  | 'CONFIRM_PROFILE'
+  | 'EDIT_PROFILE'
+  | 'START_ONBOARDING'
+  | 'START_RECOVERY'
   | 'RESET';
 
 export interface FSMEvent {

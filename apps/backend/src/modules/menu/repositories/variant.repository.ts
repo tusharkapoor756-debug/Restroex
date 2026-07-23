@@ -43,6 +43,7 @@ export class VariantRepository {
             variantName: row.variant_name,
             price: Number(row.price),
             isAvailable: row.is_available,
+            displayOrder: row.display_order ?? 0,
         };
     }
 }

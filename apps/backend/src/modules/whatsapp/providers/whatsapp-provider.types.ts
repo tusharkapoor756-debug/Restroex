@@ -15,6 +15,7 @@ export interface SendMessagePayload {
   restaurantId: string;
   to: string;
   body: string;
+  mediaUrl?: string;
 }
 
 export interface WhatsAppProvider {

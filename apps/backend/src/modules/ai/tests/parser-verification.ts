@@ -22,6 +22,26 @@ function runParserVerification() {
     { id: 'item-2', name: 'Rumali Roti', aliases: ['rumali', 'roti'], basePrice: 20, variants: [] },
     { id: 'item-3', name: 'Paneer Roll', aliases: ['paneer kathi roll', 'paneer roll'], basePrice: 120, variants: [] },
     { id: 'item-4', name: 'Coke', aliases: ['coca cola', 'cold drink'], basePrice: 40, variants: [] },
+    {
+      id: 'item-5',
+      name: 'Paneer Tikka',
+      aliases: ['paneer tikka'],
+      basePrice: 240,
+      variants: [
+        { id: 'var-3', variantName: 'full', price: 240 },
+        { id: 'var-4', variantName: 'half', price: 130 }
+      ]
+    },
+    {
+      id: 'item-6',
+      name: 'Margherita Pizza',
+      aliases: ['margherita', 'margerita'],
+      basePrice: 199,
+      variants: [
+        { id: 'var-5', variantName: 'medium', price: 299 },
+        { id: 'var-6', variantName: 'small', price: 199 }
+      ]
+    }
   ];
 
   const testCases = [
@@ -61,6 +81,43 @@ function runParserVerification() {
       input: 'checkout please', // Intent classification
       expectedIntent: 'checkout',
     },
+    // New Bug 1 Test Cases:
+    {
+      input: '2 half paneer tikka',
+      expectedItem: 'Paneer Tikka',
+      expectedQty: 2,
+      expectedVariant: 'half',
+    },
+    {
+      input: '2 paneer tikka half',
+      expectedItem: 'Paneer Tikka',
+      expectedQty: 2,
+      expectedVariant: 'half',
+    },
+    {
+      input: 'half paneer tikka x2',
+      expectedItem: 'Paneer Tikka',
+      expectedQty: 2,
+      expectedVariant: 'half',
+    },
+    {
+      input: 'do half paneer tikka',
+      expectedItem: 'Paneer Tikka',
+      expectedQty: 2,
+      expectedVariant: 'half',
+    },
+    {
+      input: 'ek full malai chap',
+      expectedItem: 'Malai Chaap',
+      expectedQty: 1,
+      expectedVariant: 'full',
+    },
+    {
+      input: '2 margherita medium',
+      expectedItem: 'Margherita Pizza',
+      expectedQty: 2,
+      expectedVariant: 'medium',
+    }
   ];
 
   for (const tc of testCases) {

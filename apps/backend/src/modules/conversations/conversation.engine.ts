@@ -57,12 +57,63 @@ export class ConversationEngine {
           updatedCart.items.push({ menuItemId, quantity, unitPrice, variantId });
         }
 
-        logger.error(
+        logger.debug(
           {
             updatedCart,
           },
           'CART AFTER ITEM_ADDED',
         );
+        break;
+      }
+
+      case 'ITEM_REMOVED': {
+        const { menuItemId, variantId } = event.payload;
+        updatedCart.items = updatedCart.items.filter(
+          (item) =>
+            !(item.menuItemId === menuItemId &&
+              (variantId !== undefined ? item.variantId === variantId : true)),
+        );
+        logger.debug({ menuItemId, variantId }, 'CART AFTER ITEM_REMOVED');
+        break;
+      }
+
+      case 'ITEM_UPDATED': {
+        // Generic item update: replace the entire cart item record
+        const { menuItemId, variantId, quantity, unitPrice } = event.payload;
+        const idx = updatedCart.items.findIndex(
+          (item) => item.menuItemId === menuItemId && item.variantId === variantId,
+        );
+        if (idx > -1 && updatedCart.items[idx]) {
+          updatedCart.items[idx] = { menuItemId, variantId, quantity, unitPrice };
+        }
+        logger.debug({ menuItemId }, 'CART AFTER ITEM_UPDATED');
+        break;
+      }
+
+      case 'VARIANT_UPDATED': {
+        // Swap a variant on an existing cart item
+        const { menuItemId, fromVariantId, toVariantId, toUnitPrice } = event.payload;
+        const vIdx = updatedCart.items.findIndex(
+          (item) => item.menuItemId === menuItemId && item.variantId === fromVariantId,
+        );
+        if (vIdx > -1 && updatedCart.items[vIdx]) {
+          updatedCart.items[vIdx]!.variantId = toVariantId;
+          updatedCart.items[vIdx]!.unitPrice = toUnitPrice;
+        }
+        logger.debug({ menuItemId, fromVariantId, toVariantId }, 'CART AFTER VARIANT_UPDATED');
+        break;
+      }
+
+      case 'QUANTITY_UPDATED': {
+        // Set absolute quantity on a specific cart item
+        const { menuItemId, variantId, quantity } = event.payload;
+        const qIdx = updatedCart.items.findIndex(
+          (item) => item.menuItemId === menuItemId && item.variantId === variantId,
+        );
+        if (qIdx > -1 && updatedCart.items[qIdx]) {
+          updatedCart.items[qIdx]!.quantity = Math.max(1, quantity);
+        }
+        logger.debug({ menuItemId, quantity }, 'CART AFTER QUANTITY_UPDATED');
         break;
       }
 

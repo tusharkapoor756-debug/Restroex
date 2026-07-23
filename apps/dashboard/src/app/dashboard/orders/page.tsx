@@ -19,7 +19,8 @@ import {
   Phone
 } from "lucide-react";
 import { OrdersService } from "../../../lib/services/orders.service";
-import { Order as BackendOrder, WorkflowOrderStatus } from "../../../types";
+import { Order as BackendOrder, WorkflowOrderStatus, Payment } from "../../../types";
+import { PaymentsService } from "../../../lib/services/payments.service";
 
 interface OrderItem {
   name: string;
@@ -38,9 +39,10 @@ interface UiOrder {
   subtotal: number;
   tax: number;
   discount: number;
-  total: number;
+  totalAmount: number;
   status: WorkflowOrderStatus | "checkout_pending" | "paid" | "cart_active" | "payment_pending" | "refunded";
   createdAt: string;
+  payment?: Payment;
   timeline: { status: string; time: string; description: string }[];
 }
 
@@ -51,6 +53,7 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<UiOrder | null>(null);
   const [sourceFilter, setSourceFilter] = useState<"all" | "whatsapp" | "table">("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [activeTab, setActiveTab] = useState<"active" | "pending_verification">("active");
 
   const fetchOrders = async () => {
     try {
@@ -62,21 +65,30 @@ export default function OrdersPage() {
           backendId: o.id,
           source: "whatsapp",
           customerPhone: o.customerPhone,
+          customerName: o.customerName || undefined,
           items: o.items?.map(i => ({ name: i.itemNameSnapshot, quantity: i.quantity, price: i.unitPrice })) || [],
           subtotal: o.totalAmount, // Mocking tax/discount as 0 for simplicity if not provided
           tax: 0,
           discount: 0,
-          total: o.totalAmount,
+          totalAmount: o.totalAmount,
           status: o.status,
           createdAt: timeNow,
+          payment: o.payment,
           timeline: [
             { status: "Received", time: timeNow, description: "Order parsed and generated." }
           ]
         };
       });
       setOrders(mapped);
-      if (mapped.length > 0 && !selectedOrder) {
-        setSelectedOrder(mapped[0]);
+      if (mapped.length > 0) {
+        if (!selectedOrder) {
+          setSelectedOrder(mapped[0]);
+        } else {
+          const freshSelected = mapped.find(o => o.backendId === selectedOrder.backendId);
+          if (freshSelected) {
+            setSelectedOrder(freshSelected);
+          }
+        }
       }
     } catch (error) {
       console.error("Failed to fetch orders:", error);
@@ -87,7 +99,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     fetchOrders();
-    const interval = setInterval(fetchOrders, 30000);
+    const interval = setInterval(fetchOrders, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -103,9 +115,13 @@ export default function OrdersPage() {
       const matchSource = sourceFilter === "all" || order.source === sourceFilter;
       const matchStatus = statusFilter === "all" || order.status === statusFilter;
 
-      return matchSearch && matchSource && matchStatus;
+      const matchTab = activeTab === "active"
+        ? order.status !== "payment_pending" && order.status !== "checkout_pending"
+        : order.status === "payment_pending" || order.status === "checkout_pending";
+
+      return matchSearch && matchSource && matchStatus && matchTab;
     });
-  }, [orders, searchQuery, sourceFilter, statusFilter]);
+  }, [orders, searchQuery, sourceFilter, statusFilter, activeTab]);
 
   // Handle status update
   const handleUpdateStatus = async (backendId: string, id: string, nextStatus: WorkflowOrderStatus) => {
@@ -175,6 +191,35 @@ export default function OrdersPage() {
           <h1 className="text-2xl font-bold font-sora text-white">Live Orders Manager</h1>
           <p className="text-slate-400 text-xs mt-0.5">Filter, monitor, and print receipts for kitchen orders.</p>
         </div>
+      </div>
+
+      {/* TABS ROW */}
+      <div className="flex gap-2 border-b border-[#23242B] pb-px">
+        <button
+          onClick={() => setActiveTab("active")}
+          className={`px-4 py-2 text-sm font-semibold transition-all border-b-2 ${
+            activeTab === "active"
+              ? "border-violet-500 text-violet-400 font-bold"
+              : "border-transparent text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          Active Orders Queue
+        </button>
+        <button
+          onClick={() => setActiveTab("pending_verification")}
+          className={`px-4 py-2 text-sm font-semibold transition-all border-b-2 relative ${
+            activeTab === "pending_verification"
+              ? "border-violet-500 text-violet-400 font-bold"
+              : "border-transparent text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          Pending Verification
+          {orders.filter(o => o.status === "payment_pending" || o.status === "checkout_pending").length > 0 && (
+            <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-amber-600 text-white text-[9px] font-bold">
+              {orders.filter(o => o.status === "payment_pending" || o.status === "checkout_pending").length}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* FILTER BAR ROW */}
@@ -274,7 +319,7 @@ export default function OrdersPage() {
                     </div>
 
                     <div className="text-right">
-                      <span className="text-xs font-bold text-white">₹{order.total}</span>
+                      <span className="text-xs font-bold text-white">₹{order.totalAmount}</span>
                     </div>
                   </div>
                 </div>
@@ -378,21 +423,112 @@ export default function OrdersPage() {
                 )}
                 <div className="flex justify-between text-sm font-bold text-white border-t border-[#23242B]/40 pt-2.5 mt-1.5">
                   <span>Total Amount</span>
-                  <span>₹{selectedOrder.total}</span>
+                  <span>₹{selectedOrder.totalAmount}</span>
                 </div>
               </div>
+
+              {/* Payment Screenshot & Manual Verification Block */}
+              {selectedOrder.payment && (
+                <div className="bg-slate-950/60 border border-[#23242B] rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Payment Verification ({selectedOrder.payment.paymentMethod})</span>
+                    <span className={`text-[10px] px-2 py-0.5 border rounded-full font-semibold uppercase ${
+                      selectedOrder.payment.paymentStatus === 'verified'
+                        ? 'text-emerald-400 bg-emerald-950/40 border-emerald-800/60'
+                        : selectedOrder.payment.paymentStatus === 'rejected'
+                        ? 'text-red-400 bg-red-950/40 border-red-800/60'
+                        : 'text-amber-400 bg-amber-950/40 border-amber-800/60 animate-pulse'
+                    }`}>
+                      {selectedOrder.payment.paymentStatus.replace('_', ' ')}
+                    </span>
+                  </div>
+                  
+                  {selectedOrder.payment.gatewayData?.storagePath ? (
+                    <div className="space-y-3">
+                      <p className="text-[11px] text-slate-400">A customer uploaded a payment receipt screenshot for verification.</p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await PaymentsService.getScreenshotUrl(selectedOrder.payment!.id);
+                              window.open(res.signedUrl, '_blank');
+                            } catch (e) {
+                              alert('Failed to fetch screenshot URL');
+                            }
+                          }}
+                          className="rounded-lg bg-slate-900 border border-[#23242B] hover:bg-slate-800 text-white px-3 py-1.5 text-xs font-semibold"
+                        >
+                          👁️ View Screenshot
+                        </button>
+                        {selectedOrder.payment.paymentStatus !== 'verified' && (
+                          <>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await PaymentsService.verifyPayment(selectedOrder.payment!.id, { verifiedBy: 'Dashboard Admin' });
+                                  fetchOrders();
+                                } catch (e: any) {
+                                  alert('Failed to verify payment: ' + e.message);
+                                }
+                              }}
+                              className="rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 text-xs font-semibold"
+                            >
+                              ✓ Approve Payment
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const reason = prompt('Please enter a rejection reason:', 'Invalid receipt or amount mismatch');
+                                if (reason !== null) {
+                                  try {
+                                    await PaymentsService.rejectPayment(selectedOrder.payment!.id, { reason });
+                                    fetchOrders();
+                                  } catch (e: any) {
+                                    alert('Failed to reject payment: ' + e.message);
+                                  }
+                                }
+                              }}
+                              className="rounded-lg bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 text-xs font-semibold"
+                            >
+                              ✗ Reject Payment
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500">Awaiting payment screenshot upload from customer...</p>
+                  )}
+                </div>
+              )}
 
               {/* Actions panel */}
               {selectedOrder.status !== "completed" && selectedOrder.status !== "cancelled" && (
                 <div className="flex flex-wrap gap-2.5 border-t border-[#23242B]/40 pt-5">
-                  {(selectedOrder.status === "paid" || selectedOrder.status === "accepted" || selectedOrder.status === "checkout_pending" || selectedOrder.status === "payment_pending" || selectedOrder.status === "cart_active") && (
+                  {selectedOrder.status === "payment_pending" && (
+                    <div className="w-full text-xs text-amber-500 bg-amber-950/20 border border-amber-900/40 p-3 rounded-xl flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4" />
+                      <span>Awaiting payment verification before order can be accepted.</span>
+                    </div>
+                  )}
+
+                  {selectedOrder.status === "paid" && (
                     <button
-                      onClick={() => handleUpdateStatus(selectedOrder.backendId, selectedOrder.id, "preparing")}
+                      onClick={() => handleUpdateStatus(selectedOrder.backendId, selectedOrder.id, "accepted")}
                       className="flex-1 min-w-[120px] rounded-xl bg-violet-600 hover:bg-violet-500 text-white py-2.5 text-xs font-semibold transition-all active:scale-[0.98]"
                     >
                       Accept Order
                     </button>
                   )}
+
+                  {selectedOrder.status === "accepted" && (
+                    <button
+                      onClick={() => handleUpdateStatus(selectedOrder.backendId, selectedOrder.id, "preparing")}
+                      className="flex-1 min-w-[120px] rounded-xl bg-violet-600 hover:bg-violet-500 text-white py-2.5 text-xs font-semibold transition-all active:scale-[0.98]"
+                    >
+                      Start Preparing
+                    </button>
+                  )}
+
                   {selectedOrder.status === "preparing" && (
                     <button
                       onClick={() => handleUpdateStatus(selectedOrder.backendId, selectedOrder.id, "ready")}

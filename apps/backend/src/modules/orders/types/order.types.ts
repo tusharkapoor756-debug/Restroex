@@ -44,15 +44,32 @@ export interface Order {
   totalAmount: number;
   idempotencyKey: string;
   humanReadableId: string;
+  subtotal: number;
+  tax: number;
+  discountAmount: number;
+  packingCharge: number;
+  deliveryCharge: number;
   receiptSnapshot?: ReceiptSnapshot;
+  paidAt?: string | null;
+  paymentVerifiedAt?: string | null;
+  acceptedAt?: string | null;
+  preparingStartedAt?: string | null;
+  estimatedReadyAt?: string | null;
+  readyAt?: string | null;
+  collectedAt?: string | null;
+  completedAt?: string | null;
+  cancelledAt?: string | null;
+  invoiceNumber?: string | null;
   createdAt: string;
   updatedAt: string;
   items?: OrderItemSnapshot[];
+  customerId?: string | null;
+  customerName?: string | null;
+  payment?: any;
 }
 
 export interface CheckoutValidationResult {
   isValid: boolean;
   errors: string[];
   validatedItems: OrderItemSnapshot[];
-  totalAmount: number;
 }

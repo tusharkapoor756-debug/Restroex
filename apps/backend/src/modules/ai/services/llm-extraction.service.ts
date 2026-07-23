@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { logger } from '../../../infrastructure/logger/logger';
 import { MenuMappingItem } from '../types/parser.types';
+import { extractJsonFromLlmResponse } from '../../../shared/utils/json-extraction.util';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,53 +100,76 @@ RULES:
 - quantity must be a positive integer.
 - If the customer did not specify a quantity, default to 1.`;
 
-    try {
-      const response = await this.client.chat.completions.create({
-        model: process.env.AI_MODEL || 'openai/gpt-4o-mini',
-        temperature: 0,
-        max_tokens: 300,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: customerText },
-        ],
-      });
+    const requestPayload = {
+      model: process.env.AI_MODEL || 'openai/gpt-4o-mini',
+      temperature: 0,
+      max_tokens: 300,
+      messages: [
+        { role: 'system' as const, content: systemPrompt },
+        { role: 'user' as const, content: customerText },
+      ],
+    };
 
-      const rawContent = response.choices[0]?.message?.content?.trim() ?? '';
-      logger.debug({ rawContent }, 'LlmExtractionService raw response');
+    let attempt = 0;
+    let rawContent = '';
 
-      // Strip markdown code fences if present
-      const jsonStr = rawContent
-        .replace(/^```(?:json)?\s*/i, '')
-        .replace(/\s*```$/, '')
-        .trim();
+    while (attempt < 2) {
+      attempt++;
+      try {
+        logger.debug({ requestBody: requestPayload }, 'LlmExtractionService: Exact request body sent to OpenRouter');
 
-      const parsed = JSON.parse(jsonStr) as LlmExtractionResult;
+        const { data, response: httpResponse } = await this.client.chat.completions.create(requestPayload).withResponse();
 
-      // Validate shape
-      if (!parsed.intent || !Array.isArray(parsed.items)) {
-        logger.warn({ parsed }, 'LlmExtractionService: invalid shape in response');
+        logger.debug({
+          status: httpResponse.status,
+          exactHttpResponse: data,
+        }, 'LlmExtractionService: Exact HTTP response and status code');
+
+        rawContent = data.choices[0]?.message?.content ?? '';
+        logger.debug({ rawContent }, 'LlmExtractionService raw response before parsing');
+
+        if (!rawContent || rawContent.trim() === "") {
+          logger.warn(`LlmExtractionService: Model returned empty message on attempt ${attempt}`);
+          if (attempt === 1) {
+            continue;
+          }
+          return null;
+        }
+
+        break;
+      } catch (err) {
+        logger.error({ err, customerText, attempt }, 'LlmExtractionService: API request failed');
+        if (attempt === 1) {
+          continue;
+        }
         return null;
       }
+    }
 
-      // Normalize intent to known enum
-      const validIntents: LlmExtractionIntent[] = ['ADD_TO_CART', 'CHECKOUT', 'VIEW_MENU', 'GREETING', 'UNKNOWN'];
-      if (!validIntents.includes(parsed.intent as LlmExtractionIntent)) {
-        parsed.intent = 'UNKNOWN';
-      }
+    if (!rawContent || rawContent.trim() === "") return null;
 
-      // Sanitize items — remove any that don't have a string itemName
-      parsed.items = parsed.items
-        .filter((item) => typeof item.itemName === 'string' && item.itemName.trim().length > 0)
-        .map((item) => ({
-          itemName: String(item.itemName).trim(),
-          variant: item.variant ? String(item.variant).trim() : undefined,
-          quantity: Math.max(1, Math.round(Number(item.quantity) || 1)),
-        }));
+    const parsed = extractJsonFromLlmResponse<LlmExtractionResult>(rawContent);
 
-      return parsed;
-    } catch (err) {
-      logger.error({ err, customerText }, 'LlmExtractionService: failed to extract or parse JSON');
+    if (!parsed || typeof parsed !== 'object' || !parsed.intent || !Array.isArray(parsed.items)) {
+      logger.warn({ parsed }, 'LlmExtractionService: invalid shape in response');
       return null;
     }
+
+    // Normalize intent to known enum
+    const validIntents: LlmExtractionIntent[] = ['ADD_TO_CART', 'CHECKOUT', 'VIEW_MENU', 'GREETING', 'UNKNOWN'];
+    if (!validIntents.includes(parsed.intent as LlmExtractionIntent)) {
+      parsed.intent = 'UNKNOWN';
+    }
+
+    // Sanitize items — remove any that don't have a string itemName
+    parsed.items = parsed.items
+      .filter((item) => typeof item.itemName === 'string' && item.itemName.trim().length > 0)
+      .map((item) => ({
+        itemName: String(item.itemName).trim(),
+        variant: item.variant ? String(item.variant).trim() : undefined,
+        quantity: Math.max(1, Math.round(Number(item.quantity) || 1)),
+      }));
+
+    return parsed;
   }
 }

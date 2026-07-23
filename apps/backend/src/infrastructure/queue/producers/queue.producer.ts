@@ -8,7 +8,7 @@ export class QueueProducer {
     this.queue = new Queue(queueName, bullMQConfig);
   }
 
-  public async addJob(name: string, data: any) {
-    return await this.queue.add(name, data);
+  public async addJob(name: string, data: any, opts?: any) {
+    return await this.queue.add(name, data, opts);
   }
 }

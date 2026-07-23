@@ -1,493 +1,647 @@
-// src/app/dashboard/settings/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Building2,
-  Users,
-  MessageSquare,
-  Globe,
   CreditCard,
-  User,
-  Plus,
-  Trash2,
+  Store,
+  Receipt,
   Save,
   CheckCircle2,
-  Lock,
   Loader2,
+  AlertCircle,
+  ChevronRight,
+  Smartphone,
+  FileText,
+  ToggleLeft,
+  ToggleRight,
+  Clock,
+  PackageCheck,
+  BadgeIndianRupee,
+  Upload,
 } from "lucide-react";
 import { SettingsService } from "../../../lib/services/settings.service";
+import { FullSettings, UpdateSettingsPayload } from "../../../types";
 
-type SubSection = "profile" | "team" | "whatsapp" | "integrations" | "billing" | "account";
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-interface TeamMember {
-  id: string;
-  name: string;
-  email: string;
-  role: "owner" | "manager" | "chef" | "cashier";
-  status: "active" | "invited";
+type SettingsTab = "profile" | "tax" | "payment" | "store";
+
+function SectionHeader({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="border-b border-[#23242B]/60 pb-4 mb-6">
+      <h3 className="text-sm font-bold text-white font-sora">{title}</h3>
+      <p className="text-[11px] text-slate-500 mt-0.5">{description}</p>
+    </div>
+  );
 }
 
+function FieldGroup({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-[10px] uppercase font-bold tracking-wider text-slate-400">{label}</label>
+      {children}
+      {hint && <p className="text-[10px] text-slate-600">{hint}</p>}
+    </div>
+  );
+}
+
+function Input({
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  disabled = false,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      disabled={disabled}
+      className="w-full bg-[#0a0b10] border border-[#23242B] focus:border-violet-500/70 rounded-xl px-3 py-2.5 text-slate-100 placeholder-slate-600 focus:outline-none transition-colors text-xs disabled:opacity-40"
+    />
+  );
+}
+
+function Toggle({
+  checked,
+  onChange,
+  label,
+  description,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+  description?: string;
+}) {
+  return (
+    <div
+      onClick={() => onChange(!checked)}
+      className="flex items-center justify-between p-4 rounded-xl bg-slate-950/50 border border-[#23242B] hover:border-slate-700 cursor-pointer transition-colors"
+    >
+      <div>
+        <span className="text-xs font-semibold text-slate-200 block">{label}</span>
+        {description && <span className="text-[10px] text-slate-500">{description}</span>}
+      </div>
+      <div className={`transition-colors ${checked ? "text-violet-400" : "text-slate-600"}`}>
+        {checked ? <ToggleRight className="h-6 w-6" /> : <ToggleLeft className="h-6 w-6" />}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ─────────────────────────────────────────────────────────────────
+
 export default function SettingsPage() {
-  const [activeSection, setActiveSection] = useState<SubSection>("profile");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  // 1. Profile
-  const [restaurantName, setRestaurantName] = useState("Bella Italia");
-  const [cuisineType, setCuisineType] = useState("Italian");
-  const [phone, setPhone] = useState("+91 98124 55432");
-  const [address, setAddress] = useState("123 Culinary Boulevard, Suite A");
-  const [avgTicket, setAvgTicket] = useState("650");
+  // ── Business Profile ──────────────────────────────────────────────────────
+  const [logoUrl, setLogoUrl] = useState("");
+  const [name, setName] = useState("");
+  const [ownerName, setOwnerName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [email, setEmail] = useState("");
+  const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [pincode, setPincode] = useState("");
 
-  // 2. Team
-  const [team, setTeam] = useState<TeamMember[]>([
-    { id: "tm-1", name: "Operator Hub (You)", email: "admin@restroex.com", role: "owner", status: "active" },
-    { id: "tm-2", name: "Chef Alex", email: "alex.cuisine@gmail.com", role: "chef", status: "active" },
-    { id: "tm-3", name: "Sanjay Kumar", email: "sanjay@bistro.com", role: "manager", status: "active" },
-    { id: "tm-4", name: "Ramesh Sen", email: "ramesh@bistro.com", role: "cashier", status: "invited" },
-  ]);
-  const [inviteName, setInviteName] = useState("");
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<"manager" | "chef" | "cashier">("manager");
+  // ── Tax & Billing ─────────────────────────────────────────────────────────
+  const [gstEnabled, setGstEnabled] = useState(false);
+  const [gstNumber, setGstNumber] = useState("");
+  const [gstPercentage, setGstPercentage] = useState("18");
+  const [fssaiNumber, setFssaiNumber] = useState("");
 
-  // 3. WhatsApp
-  const [botWelcomeMsg, setBotWelcomeMsg] = useState(
-    "Hello! Welcome to Bella Italia. Would you like to view our digital menu or place a new order today?"
-  );
-  const [aiAutoOrder, setAiAutoOrder] = useState(true);
-  const [isWaConnected, setIsWaConnected] = useState(true);
+  // ── Payment ───────────────────────────────────────────────────────────────
+  const [codEnabled, setCodEnabled] = useState(false);
+  const [manualUpiEnabled, setManualUpiEnabled] = useState(true);
+  const [upiMerchantName, setUpiMerchantName] = useState("");
+  const [upiId, setUpiId] = useState("");
+  const [upiQrImageUrl, setUpiQrImageUrl] = useState("");
 
-  // 4. Integrations
-  const [integrations, setIntegrations] = useState([
-    { id: "zomato", name: "Zomato Partner Portal", desc: "Sync live menus and receive orders from Zomato directly.", connected: true },
-    { id: "swiggy", name: "Swiggy Partner Sync", desc: "Sync menus and ingest Swiggy delivery orders automatically.", connected: false },
-    { id: "ubereats", name: "UberEats Connect", desc: "Mirror catalog and receive UberEats order tickets.", connected: false },
-  ]);
+  // ── Store ─────────────────────────────────────────────────────────────────
+  const [pickupAvailable, setPickupAvailable] = useState(true);
+  const [prepTime, setPrepTime] = useState("15");
+  const [pickupInstructions, setPickupInstructions] = useState("");
 
-  // Load restaurant config from placeholder service
+  // ── Load settings ─────────────────────────────────────────────────────────
+  const hydrate = useCallback((data: FullSettings) => {
+    const { profile, settings } = data;
+    setLogoUrl(profile.logoUrl ?? "");
+    setName(profile.name ?? "");
+    setOwnerName(profile.ownerName ?? "");
+    setPhoneNumber(profile.phoneNumber ?? "");
+    setEmail(profile.email ?? "");
+    setAddress(profile.address ?? "");
+    setCity(profile.city ?? "");
+    setState(profile.state ?? "");
+    setPincode(profile.pincode ?? "");
+
+    setGstEnabled(settings.gstEnabled);
+    setGstNumber(settings.gstNumber ?? "");
+    setGstPercentage(String(settings.gstPercentage ?? 18));
+    setFssaiNumber(settings.fssaiNumber ?? "");
+
+    setUpiMerchantName(settings.upiMerchantName ?? "");
+    setUpiId(settings.upiId ?? "");
+    setUpiQrImageUrl(settings.upiQrImageUrl ?? "");
+    setCodEnabled(settings.codEnabled ?? false);
+    setManualUpiEnabled(settings.manualUpiEnabled ?? true);
+
+    setPickupAvailable(settings.pickupAvailable);
+    setPrepTime(String(settings.prepTime ?? 15));
+    setPickupInstructions(settings.pickupInstructions ?? "");
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
-        const settings = await SettingsService.getSettings();
-        if (settings) {
-          if (settings.name) setRestaurantName(settings.name);
-          if (settings.phoneNumber) setPhone(settings.phoneNumber);
-          if (settings.address) setAddress(settings.address);
-          if (settings.city) setCuisineType(settings.city); // mocking cuisine as city for now
-        }
-      } catch {
-        // fallback
+        setIsLoading(true);
+        setLoadError(null);
+        const data = await SettingsService.getSettings();
+        hydrate(data);
+      } catch (err: any) {
+        setLoadError(err?.message || "Failed to load settings");
+      } finally {
+        setIsLoading(false);
       }
     })();
-  }, []);
+  }, [hydrate]);
 
-  const handleSaveProfile = async (e: React.FormEvent) => {
+  // ── Save handler ──────────────────────────────────────────────────────────
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    setSaveError(null);
     setSaveSuccess(false);
-    try {
-      await SettingsService.updateSettings({
-        name: restaurantName,
-        phoneNumber: phone,
-        address,
-        city: cuisineType
-      });
-    } catch {
-      // ignore
+
+    const payload: UpdateSettingsPayload = {
+      name: name || undefined,
+      logoUrl: logoUrl || undefined,
+      ownerName: ownerName || undefined,
+      phoneNumber: phoneNumber || undefined,
+      email: email || undefined,
+      address: address || undefined,
+      city: city || undefined,
+      state: state || undefined,
+      pincode: pincode || undefined,
+      gstEnabled,
+      gstNumber: gstEnabled ? (gstNumber || undefined) : undefined,
+      gstPercentage: gstEnabled ? Number(gstPercentage) : 0,
+      fssaiNumber: fssaiNumber || undefined,
+      paymentMethods: ["manual_upi"],
+      upiMerchantName: upiMerchantName || undefined,
+      upiId: upiId || undefined,
+      upiQrImageUrl: upiQrImageUrl || undefined,
+      codEnabled,
+      manualUpiEnabled,
+      pickupAvailable,
+      prepTime: Number(prepTime) || 15,
+      pickupInstructions: pickupInstructions || undefined,
+    };
+
+    if (manualUpiEnabled) {
+      if (!upiId?.trim() || !upiMerchantName?.trim() || !upiQrImageUrl?.trim()) {
+        setSaveError("Merchant Name, UPI ID, and QR Code Image are mandatory when Manual UPI is enabled.");
+        setIsSaving(false);
+        return;
+      }
     }
-    setIsSaving(false);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+
+    try {
+      const updated = await SettingsService.updateSettings(payload);
+      hydrate(updated);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 4000);
+    } catch (err: any) {
+      setSaveError(err?.message || "Failed to save settings");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleInviteTeam = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inviteName || !inviteEmail) return;
-    setTeam((prev) => [
-      ...prev,
-      { id: `tm-${Date.now()}`, name: inviteName, email: inviteEmail, role: inviteRole, status: "invited" },
-    ]);
-    setInviteName("");
-    setInviteEmail("");
-  };
-
-  const handleDeleteTeam = (id: string) => {
-    if (id === "tm-1") { alert("Cannot remove the account owner."); return; }
-    setTeam((prev) => prev.filter((m) => m.id !== id));
-  };
-
-  const toggleIntegration = (id: string) =>
-    setIntegrations((prev) => prev.map((i) => (i.id === id ? { ...i, connected: !i.connected } : i)));
-
-  const navSections: { id: SubSection; label: string; icon: React.ReactNode }[] = [
-    { id: "profile", label: "Restaurant Profile", icon: <Building2 className="h-4 w-4" /> },
-    { id: "team", label: "Team Members", icon: <Users className="h-4 w-4" /> },
-    { id: "whatsapp", label: "WhatsApp Gateway", icon: <MessageSquare className="h-4 w-4" /> },
-    { id: "integrations", label: "Aggregators Sync", icon: <Globe className="h-4 w-4" /> },
-    { id: "billing", label: "Billing & Plans", icon: <CreditCard className="h-4 w-4" /> },
-    { id: "account", label: "User Account", icon: <User className="h-4 w-4" /> },
+  const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
+    { id: "profile", label: "Business Profile", icon: <Building2 className="h-4 w-4" /> },
+    { id: "tax", label: "Tax & Billing", icon: <Receipt className="h-4 w-4" /> },
+    { id: "payment", label: "Payment Settings", icon: <CreditCard className="h-4 w-4" /> },
+    { id: "store", label: "Store Settings", icon: <Store className="h-4 w-4" /> },
   ];
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-7 w-7 animate-spin text-violet-400" />
+          <span className="text-xs text-slate-500">Loading settings…</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold font-sora text-white">System Settings</h1>
-        <p className="text-slate-400 text-xs mt-0.5">
-          Control restaurant profile, team access, WhatsApp bot, integrations, and billing.
-        </p>
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold font-sora text-white">Restaurant Settings</h1>
+          <p className="text-slate-400 text-xs mt-0.5">
+            Central configuration for your restaurant — profile, taxes, payments, and store behaviour.
+          </p>
+        </div>
+        <button
+          form="settings-form"
+          type="submit"
+          disabled={isSaving}
+          className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 active:scale-95 text-white px-4 py-2.5 text-xs font-semibold shadow-lg shadow-violet-950/40 disabled:opacity-50 transition-all"
+        >
+          {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Save Changes
+        </button>
       </div>
 
+      {/* ── Status toasts ───────────────────────────────────────────────── */}
       {saveSuccess && (
         <div className="flex items-center gap-2.5 p-3 rounded-xl bg-emerald-950/40 border border-emerald-900/60 text-emerald-200 text-xs">
           <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-          <span>Configuration saved successfully.</span>
+          <span>Settings saved successfully.</span>
+        </div>
+      )}
+      {(saveError || loadError) && (
+        <div className="flex items-center gap-2.5 p-3 rounded-xl bg-red-950/40 border border-red-900/60 text-red-200 text-xs">
+          <AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
+          <span>{saveError || loadError}</span>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* LEFT: Settings Nav */}
-        <div className="lg:col-span-3 bg-[#0e0f14]/50 border border-[#23242B] rounded-2xl p-3 space-y-1">
-          {navSections.map((sec) => (
-            <button
-              key={sec.id}
-              onClick={() => setActiveSection(sec.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-left transition-all ${
-                activeSection === sec.id
-                  ? "bg-violet-600 text-white"
-                  : "text-slate-400 hover:text-white hover:bg-slate-900/40"
-              }`}
-            >
-              {sec.icon}
-              {sec.label}
-            </button>
-          ))}
-        </div>
+      {/* ── Layout ──────────────────────────────────────────────────────── */}
+      <form id="settings-form" onSubmit={handleSave}>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
-        {/* RIGHT: Settings Panel */}
-        <div className="lg:col-span-9 bg-[#0e0f14]/40 border border-[#23242B] rounded-2xl p-6 min-h-[56vh]">
-
-          {/* ── 1. PROFILE ── */}
-          {activeSection === "profile" && (
-            <form onSubmit={handleSaveProfile} className="space-y-6">
-              <div className="flex justify-between items-center border-b border-[#23242B]/40 pb-3">
-                <h3 className="text-sm font-bold text-white font-sora">Restaurant Profile</h3>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white px-3 py-1.5 text-xs font-semibold disabled:opacity-50 transition-all active:scale-[0.98]"
-                >
-                  {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                  Save Changes
-                </button>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-xs">
-                {[
-                  { label: "Restaurant Name", value: restaurantName, setter: setRestaurantName, type: "text", placeholder: "e.g. Bella Italia" },
-                  { label: "Cuisine Type", value: cuisineType, setter: setCuisineType, type: "text", placeholder: "e.g. Italian, Asian" },
-                  { label: "Contact Hotline", value: phone, setter: setPhone, type: "tel", placeholder: "+91 98xxx xxxxx" },
-                  { label: "Avg. Ticket Size (₹)", value: avgTicket, setter: setAvgTicket, type: "number", placeholder: "650" },
-                ].map((field) => (
-                  <div key={field.label} className="space-y-1.5">
-                    <label className="text-[10px] uppercase font-bold tracking-wider text-slate-400">{field.label}</label>
-                    <input
-                      type={field.type}
-                      value={field.value}
-                      placeholder={field.placeholder}
-                      onChange={(e) => field.setter(e.target.value)}
-                      className="w-full bg-slate-950 border border-[#23242B] focus:border-violet-500 rounded-xl px-3 py-2 text-slate-100 placeholder-slate-600 focus:outline-none transition-colors"
-                      required
-                    />
-                  </div>
-                ))}
-                <div className="space-y-1.5 sm:col-span-2">
-                  <label className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Physical Address</label>
-                  <input
-                    type="text"
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    className="w-full bg-slate-950 border border-[#23242B] focus:border-violet-500 rounded-xl px-3 py-2 text-slate-100 focus:outline-none transition-colors"
-                    required
-                  />
-                </div>
-              </div>
-            </form>
-          )}
-
-          {/* ── 2. TEAM ── */}
-          {activeSection === "team" && (
-            <div className="space-y-5">
-              <div className="border-b border-[#23242B]/40 pb-3">
-                <h3 className="text-sm font-bold text-white font-sora">Team Hierarchy</h3>
-              </div>
-              <form
-                onSubmit={handleInviteTeam}
-                className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end bg-slate-950/40 p-4 rounded-2xl border border-[#23242B] text-xs"
+          {/* Left nav */}
+          <div className="lg:col-span-3 bg-[#0e0f14]/60 border border-[#23242B] rounded-2xl p-2 space-y-0.5">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-left transition-all ${
+                  activeTab === tab.id
+                    ? "bg-violet-600/90 text-white shadow-md shadow-violet-950/50"
+                    : "text-slate-400 hover:text-white hover:bg-slate-900/50"
+                }`}
               >
-                {[
-                  { label: "Full Name", value: inviteName, setter: setInviteName, type: "text", placeholder: "e.g. Ramesh Sen" },
-                  { label: "Email Address", value: inviteEmail, setter: setInviteEmail, type: "email", placeholder: "ramesh@bistro.com" },
-                ].map((f) => (
-                  <div key={f.label} className="space-y-1.5">
-                    <label className="text-[9px] uppercase font-bold tracking-wider text-slate-500">{f.label}</label>
-                    <input
-                      type={f.type}
-                      placeholder={f.placeholder}
-                      value={f.value}
-                      onChange={(e) => f.setter(e.target.value)}
-                      className="w-full bg-slate-950 border border-[#23242B] focus:border-violet-500 rounded-xl px-3 py-2 text-slate-100 focus:outline-none"
-                      required
-                    />
-                  </div>
-                ))}
-                <div className="flex gap-2 items-end">
-                  <div className="space-y-1.5 flex-1">
-                    <label className="text-[9px] uppercase font-bold tracking-wider text-slate-500">Role</label>
-                    <select
-                      value={inviteRole}
-                      onChange={(e) => setInviteRole(e.target.value as "manager" | "chef" | "cashier")}
-                      className="w-full bg-slate-950 border border-[#23242B] rounded-xl px-3 py-2 text-slate-100 focus:outline-none"
-                    >
-                      <option value="manager">Manager</option>
-                      <option value="chef">Chef</option>
-                      <option value="cashier">Cashier</option>
-                    </select>
-                  </div>
-                  <button
-                    type="submit"
-                    className="rounded-xl bg-violet-600 hover:bg-violet-500 text-white p-2 font-semibold shrink-0 transition-colors"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
+                <div className="flex items-center gap-2.5">
+                  {tab.icon}
+                  {tab.label}
                 </div>
-              </form>
+                {activeTab === tab.id && <ChevronRight className="h-3.5 w-3.5 opacity-70" />}
+              </button>
+            ))}
+          </div>
 
-              <div className="bg-slate-950/20 border border-[#23242B] rounded-2xl overflow-hidden text-xs">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="border-b border-[#23242B] bg-slate-950/40 text-[9px] uppercase tracking-wider text-slate-500 font-bold">
-                      <th className="p-3">Name</th>
-                      <th className="p-3">Email</th>
-                      <th className="p-3">Role</th>
-                      <th className="p-3">Status</th>
-                      <th className="p-3 text-right">Remove</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#23242B]/30">
-                    {team.map((m) => (
-                      <tr key={m.id} className="hover:bg-slate-950/20">
-                        <td className="p-3 font-bold text-slate-200">{m.name}</td>
-                        <td className="p-3 text-slate-400">{m.email}</td>
-                        <td className="p-3 text-slate-300 capitalize">{m.role}</td>
-                        <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-semibold border ${
-                            m.status === "active"
-                              ? "bg-emerald-950/30 text-emerald-400 border-emerald-900/60"
-                              : "bg-amber-950/30 text-amber-400 border-amber-900/60"
-                          }`}>
-                            {m.status}
-                          </span>
-                        </td>
-                        <td className="p-3 text-right">
-                          <button onClick={() => handleDeleteTeam(m.id)} className="p-1 text-slate-500 hover:text-red-400 transition-colors">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+          {/* Right panel */}
+          <div className="lg:col-span-9 bg-[#0e0f14]/40 border border-[#23242B] rounded-2xl p-6 min-h-[56vh]">
 
-          {/* ── 3. WHATSAPP ── */}
-          {activeSection === "whatsapp" && (
-            <div className="space-y-6 text-xs">
-              <div className="flex justify-between items-center border-b border-[#23242B]/40 pb-3">
-                <h3 className="text-sm font-bold text-white font-sora">WhatsApp Automation</h3>
-                <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
-                  isWaConnected ? "bg-emerald-950 text-emerald-400 border-emerald-900" : "bg-red-950 text-red-400 border-red-900"
-                }`}>
-                  {isWaConnected ? "Live" : "Offline"}
-                </span>
-              </div>
-
+            {/* ══ TAB 1: BUSINESS PROFILE ══ */}
+            {activeTab === "profile" && (
               <div className="space-y-5">
-                <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-950/50 border border-[#23242B]">
-                  <div>
-                    <span className="font-bold text-slate-200 block">Bot Phone Line</span>
-                    <span className="text-[11px] text-slate-500">Controls active automation channel</span>
-                  </div>
-                  <button
-                    onClick={() => setIsWaConnected((v) => !v)}
-                    className={`rounded-xl px-4 py-2 font-semibold border transition-all ${
-                      isWaConnected
-                        ? "border-red-900/50 text-red-400 hover:bg-red-950/20"
-                        : "bg-violet-600 border-violet-600 text-white hover:bg-violet-500"
-                    }`}
-                  >
-                    {isWaConnected ? "Disconnect" : "Connect"}
-                  </button>
-                </div>
+                <SectionHeader
+                  title="Business Profile"
+                  description="Your restaurant's public identity. Used in WhatsApp greetings, receipts, and invoices."
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                  <FieldGroup label="Restaurant Logo URL" hint="Direct link to your logo image (JPG, PNG, WebP)">
+                    <Input value={logoUrl} onChange={setLogoUrl} placeholder="https://example.com/logo.png" />
+                  </FieldGroup>
 
-                <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-950/50 border border-[#23242B]">
-                  <div>
-                    <span className="font-bold text-slate-200 block">AI Auto-Order Assistant</span>
-                    <span className="text-[11px] text-slate-500">Automatically parse and generate orders from customer chats</span>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" checked={aiAutoOrder} onChange={(e) => setAiAutoOrder(e.target.checked)} className="sr-only peer" />
-                    <div className="w-9 h-5 bg-slate-800 border border-[#23242B] rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-slate-400 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-violet-600" />
-                  </label>
-                </div>
+                  <FieldGroup label="Restaurant Name">
+                    <Input value={name} onChange={setName} placeholder="e.g. Spice Garden" />
+                  </FieldGroup>
 
-                <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Welcome / Greeting Template</label>
-                  <textarea
-                    value={botWelcomeMsg}
-                    onChange={(e) => setBotWelcomeMsg(e.target.value)}
-                    rows={3}
-                    className="w-full bg-slate-950 border border-[#23242B] focus:border-violet-500 rounded-xl px-3 py-2 text-slate-100 focus:outline-none transition-colors"
-                  />
-                  <p className="text-[10px] text-slate-600">Sent automatically on first customer contact.</p>
+                  <FieldGroup label="Owner / Manager Name">
+                    <Input value={ownerName} onChange={setOwnerName} placeholder="e.g. Rajesh Sharma" />
+                  </FieldGroup>
+
+                  <FieldGroup label="Business Phone">
+                    <Input value={phoneNumber} onChange={setPhoneNumber} placeholder="+91 98765 43210" type="tel" />
+                  </FieldGroup>
+
+                  <FieldGroup label="Business Email">
+                    <Input value={email} onChange={setEmail} placeholder="info@spicegarden.in" type="email" />
+                  </FieldGroup>
+
+                  <FieldGroup label="Pincode">
+                    <Input value={pincode} onChange={setPincode} placeholder="400001" />
+                  </FieldGroup>
+
+                  <FieldGroup label="Address" hint="Used for receipt printing and GST invoices">
+                    <Input value={address} onChange={setAddress} placeholder="e.g. 12/B, MG Road" />
+                  </FieldGroup>
+
+                  <FieldGroup label="City">
+                    <Input value={city} onChange={setCity} placeholder="e.g. Mumbai" />
+                  </FieldGroup>
+
+                  <FieldGroup label="State">
+                    <Input value={state} onChange={setState} placeholder="e.g. Maharashtra" />
+                  </FieldGroup>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* ── 4. INTEGRATIONS ── */}
-          {activeSection === "integrations" && (
-            <div className="space-y-6">
-              <div className="border-b border-[#23242B]/40 pb-3">
-                <h3 className="text-sm font-bold text-white font-sora">Aggregator Partner Sync</h3>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-                {integrations.map((int) => (
-                  <div key={int.id} className="p-5 rounded-2xl bg-slate-950/40 border border-[#23242B] hover:border-slate-800 flex flex-col justify-between h-44 transition-colors">
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-start">
-                        <span className="font-bold text-slate-200 leading-tight">{int.name}</span>
-                        <span className={`h-2 w-2 rounded-full shrink-0 mt-1 ${int.connected ? "bg-emerald-500" : "bg-slate-700"}`} />
-                      </div>
-                      <p className="text-[11px] text-slate-500 leading-normal">{int.desc}</p>
-                    </div>
-                    <button
-                      onClick={() => toggleIntegration(int.id)}
-                      className={`w-full rounded-xl py-2 font-semibold border transition-all ${
-                        int.connected
-                          ? "border-[#23242B] text-slate-400 hover:text-white"
-                          : "bg-violet-600 border-violet-600 text-white hover:bg-violet-500"
-                      }`}
+            {/* ══ TAB 2: TAX & BILLING ══ */}
+            {activeTab === "tax" && (
+              <div className="space-y-5">
+                <SectionHeader
+                  title="Tax & Billing"
+                  description="GST configuration is used by the invoice generator and checkout billing."
+                />
+
+                <Toggle
+                  checked={gstEnabled}
+                  onChange={setGstEnabled}
+                  label="GST Enabled"
+                  description="Enable Goods & Services Tax on customer orders"
+                />
+
+                {/* GST fields — only shown when GST is enabled */}
+                <div
+                  className={`overflow-hidden transition-all duration-300 ${
+                    gstEnabled ? "max-h-96 opacity-100" : "max-h-0 opacity-0 pointer-events-none"
+                  }`}
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs pt-2">
+                    <FieldGroup
+                      label="GST Number"
+                      hint="15-character GSTIN (e.g. 27AAAAA0000A1Z5)"
                     >
-                      {int.connected ? "Disconnect" : "Connect Portal"}
-                    </button>
+                      <Input
+                        value={gstNumber}
+                        onChange={setGstNumber}
+                        placeholder="27AAAAA0000A1Z5"
+                      />
+                    </FieldGroup>
+
+                    <FieldGroup label="GST Percentage (%)" hint="Applied to every taxable order">
+                      <Input
+                        value={gstPercentage}
+                        onChange={setGstPercentage}
+                        placeholder="18"
+                        type="number"
+                      />
+                    </FieldGroup>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                </div>
 
-          {/* ── 5. BILLING ── */}
-          {activeSection === "billing" && (
-            <div className="space-y-6 text-xs">
-              <div className="border-b border-[#23242B]/40 pb-3">
-                <h3 className="text-sm font-bold text-white font-sora">Subscription & Billing</h3>
-              </div>
+                {/* Divider */}
+                <div className="border-t border-[#23242B]/50 pt-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <FileText className="h-4 w-4 text-slate-500" />
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">
+                      FSSAI Registration
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                    <FieldGroup
+                      label="FSSAI License Number"
+                      hint="Optional — shown on receipts if provided"
+                    >
+                      <Input
+                        value={fssaiNumber}
+                        onChange={setFssaiNumber}
+                        placeholder="10012345000123"
+                      />
+                    </FieldGroup>
+                  </div>
+                </div>
 
-              <div className="p-5 rounded-2xl bg-violet-950/10 border border-violet-800/70 relative overflow-hidden flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-                <div className="absolute -right-20 -top-20 h-48 w-48 rounded-full bg-violet-600/5 blur-[60px]" />
-                <div className="space-y-1.5">
-                  <span className="text-[9px] uppercase font-bold tracking-widest text-violet-400">Active Plan</span>
-                  <h4 className="text-sm font-bold text-white">Restroex Growth Operating System</h4>
-                  <p className="text-[11px] text-slate-400 max-w-xs leading-relaxed">
-                    Full WhatsApp automation, AI order parser, unlimited catalog, and up to 5 operator seats.
+                {/* Future compatibility note */}
+                <div className="flex items-start gap-3 p-4 rounded-xl bg-violet-950/10 border border-violet-800/30 text-xs text-violet-300/80">
+                  <BadgeIndianRupee className="h-4 w-4 mt-0.5 shrink-0 text-violet-400" />
+                  <div>
+                    <span className="font-semibold text-violet-300 block mb-0.5">Invoice Ready</span>
+                    These fields are used directly by the Invoice Generator module. Ensure accuracy before enabling GST billing for customers.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ══ TAB 3: PAYMENT SETTINGS ══ */}
+            {activeTab === "payment" && (
+              <div className="space-y-5">
+                <SectionHeader
+                  title="Payment Settings"
+                  description="Enable and configure payment methods. COD skips payment. Manual UPI requires screenshot verification."
+                />
+
+                {/* Payment Method Toggles */}
+                <div className="space-y-3">
+                  <p className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Active Methods</p>
+                  <Toggle
+                    checked={manualUpiEnabled}
+                    onChange={setManualUpiEnabled}
+                    label="Manual UPI (Prepaid)"
+                    description="Customer pays via UPI and sends screenshot for verification"
+                  />
+                  <Toggle
+                    checked={codEnabled}
+                    onChange={setCodEnabled}
+                    label="Cash on Delivery (COD)"
+                    description="Order is confirmed immediately without prepayment"
+                  />
+                </div>
+
+                {/* UPI Config — visible only when Manual UPI is enabled */}
+                <div
+                  className={`overflow-hidden transition-all duration-300 ${
+                    manualUpiEnabled ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0 pointer-events-none"
+                  }`}
+                >
+                  <div className="border-t border-[#23242B]/50 pt-4 space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Smartphone className="h-4 w-4 text-slate-500" />
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">UPI Details</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                      <FieldGroup
+                        label="Merchant Name"
+                        hint="Displayed on the UPI payment screen"
+                      >
+                        <Input
+                          value={upiMerchantName}
+                          onChange={setUpiMerchantName}
+                          placeholder="e.g. Spice Garden"
+                        />
+                      </FieldGroup>
+
+                      <FieldGroup
+                        label="UPI ID"
+                        hint="e.g. spicegarden@okicici"
+                      >
+                        <Input
+                          value={upiId}
+                          onChange={setUpiId}
+                          placeholder="merchant@bank"
+                        />
+                      </FieldGroup>
+
+                      <div className="sm:col-span-2">
+                        <label className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1.5">UPI QR Code Image</label>
+                        <div className="flex flex-col sm:flex-row gap-4 items-start">
+                          {upiQrImageUrl ? (
+                            <div className="relative group rounded-xl overflow-hidden border border-[#23242B] bg-[#0A0B10] w-36 h-36 flex items-center justify-center shrink-0">
+                              <img src={upiQrImageUrl} alt="UPI QR" className="max-w-full max-h-full object-contain p-2" />
+                              <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setUpiQrImageUrl("")}
+                                  className="p-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors text-xs font-semibold"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
+                          <div className="flex-1 w-full">
+                            <label className="flex flex-col items-center justify-center w-full h-36 border border-dashed border-[#23242B] rounded-xl cursor-pointer hover:bg-white/5 transition-colors">
+                              <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                <Upload className="w-6 h-6 text-slate-500 mb-2" />
+                                <p className="text-xs text-slate-400"><span className="font-semibold">Click to upload</span> or drag and drop</p>
+                                <p className="text-[10px] text-slate-500 mt-1">PNG, JPG, JPEG (Max. 5MB)</p>
+                              </div>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    try {
+                                      setSaveError(null);
+                                      const { UploadService } = require("../../../lib/services/upload.service");
+                                      const res = await UploadService.uploadFile(file);
+                                      setUpiQrImageUrl(res.url);
+                                    } catch (err: any) {
+                                      setSaveError(err.message || "Failed to upload image");
+                                    }
+                                  }
+                                }}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Live preview */}
+                    {(upiId || upiMerchantName) && (
+                      <div className="flex items-start gap-3 p-4 rounded-xl bg-violet-950/10 border border-violet-800/30 text-xs text-violet-300/80">
+                        <Smartphone className="h-4 w-4 mt-0.5 shrink-0 text-violet-400" />
+                        <div>
+                          <span className="font-semibold text-violet-300 block mb-1">Payment Preview</span>
+                          <span className="block text-slate-400">Merchant: <span className="text-white">{upiMerchantName || '—'}</span></span>
+                          <span className="block text-slate-400">UPI ID: <span className="text-white font-mono">{upiId || '—'}</span></span>
+                          {upiQrImageUrl && <span className="block text-emerald-400 mt-1">✓ QR Image configured</span>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Policy note */}
+                {!codEnabled && !manualUpiEnabled && (
+                  <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-950/20 border border-amber-800/30 text-xs text-amber-300/80">
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-400" />
+                    <div>
+                      <span className="font-semibold text-amber-300 block mb-0.5">No Payment Method Enabled</span>
+                      Enable at least one payment method. Manual UPI will be used as fallback if both are disabled.
+                    </div>
+                  </div>
+                )}
+
+                {/* Future providers hint */}
+                <div className="p-4 rounded-xl border border-dashed border-[#23242B] text-center">
+                  <p className="text-[11px] text-slate-600">
+                    More payment providers — <span className="text-slate-500">Razorpay, PhonePe, Stripe</span> — coming soon.
                   </p>
                 </div>
-                <div className="shrink-0 text-left sm:text-right">
-                  <span className="text-xl font-extrabold text-white">₹4,999<span className="text-sm font-normal text-slate-400">/mo</span></span>
-                  <span className="text-[10px] text-slate-500 block mt-1">Renews July 28, 2026</span>
-                </div>
               </div>
+            )}
 
-              <div className="space-y-2.5">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Payment Method</span>
-                <div className="flex justify-between items-center p-4 bg-slate-950/50 border border-[#23242B] rounded-2xl">
-                  <div className="flex items-center gap-3">
-                    <CreditCard className="h-5 w-5 text-slate-500" />
-                    <div>
-                      <span className="font-bold text-slate-200 block">Visa ending in 4242</span>
-                      <span className="text-[10px] text-slate-500">Expires 12/28</span>
+            {/* ══ TAB 4: STORE SETTINGS ══ */}
+            {activeTab === "store" && (
+              <div className="space-y-5">
+                <SectionHeader
+                  title="Store Settings"
+                  description="These values are used by the WhatsApp bot at checkout — preparation time, pickup mode, and instructions."
+                />
+
+                <Toggle
+                  checked={pickupAvailable}
+                  onChange={setPickupAvailable}
+                  label="Pickup Available"
+                  description="Allow customers to pick up their orders directly from the restaurant"
+                />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                  <FieldGroup
+                    label="Estimated Prep Time (minutes)"
+                    hint="Communicated to the customer after order confirmation"
+                  >
+                    <div className="relative">
+                      <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-600" />
+                      <input
+                        type="number"
+                        min="0"
+                        value={prepTime}
+                        onChange={(e) => setPrepTime(e.target.value)}
+                        placeholder="15"
+                        className="w-full bg-[#0a0b10] border border-[#23242B] focus:border-violet-500/70 rounded-xl pl-9 pr-3 py-2.5 text-slate-100 placeholder-slate-600 focus:outline-none transition-colors text-xs"
+                      />
                     </div>
-                  </div>
-                  <button className="text-violet-400 hover:text-violet-300 font-semibold transition-colors">Update</button>
+                  </FieldGroup>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3 pt-1">
-                  {[
-                    { label: "This Month", value: "₹4,999" },
-                    { label: "Last Month", value: "₹4,999" },
-                    { label: "Total Paid", value: "₹24,995" },
-                  ].map((stat) => (
-                    <div key={stat.label} className="p-3 rounded-xl bg-slate-950/40 border border-[#23242B] text-center">
-                      <span className="text-[9px] text-slate-500 uppercase tracking-wider block">{stat.label}</span>
-                      <span className="text-sm font-bold text-white mt-1 block">{stat.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── 6. ACCOUNT ── */}
-          {activeSection === "account" && (
-            <form
-              onSubmit={(e) => { e.preventDefault(); setSaveSuccess(true); setTimeout(() => setSaveSuccess(false), 3000); }}
-              className="space-y-6 text-xs"
-            >
-              <div className="flex justify-between items-center border-b border-[#23242B]/40 pb-3">
-                <h3 className="text-sm font-bold text-white font-sora">Login Credentials</h3>
-                <button
-                  type="submit"
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white px-3 py-1.5 font-semibold transition-all active:scale-[0.98]"
+                <FieldGroup
+                  label="Pickup Instructions"
+                  hint="Shown to customers who choose pickup — location, parking, counter number, etc."
                 >
-                  <Lock className="h-3.5 w-3.5" /> Update Password
-                </button>
-              </div>
+                  <textarea
+                    value={pickupInstructions}
+                    onChange={(e) => setPickupInstructions(e.target.value)}
+                    rows={3}
+                    placeholder="e.g. Please collect your order from Counter 3, near the main entrance."
+                    className="w-full bg-[#0a0b10] border border-[#23242B] focus:border-violet-500/70 rounded-xl px-3 py-2.5 text-slate-100 placeholder-slate-600 focus:outline-none transition-colors text-xs resize-none"
+                  />
+                </FieldGroup>
 
-              <div className="max-w-sm space-y-4">
-                <div className="p-4 rounded-2xl bg-slate-950/40 border border-[#23242B] flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-violet-600/20 border border-violet-500/50 flex items-center justify-center text-sm font-bold text-violet-300">
-                    OP
-                  </div>
+                {/* WhatsApp bot integration note */}
+                <div className="flex items-start gap-3 p-4 rounded-xl bg-emerald-950/10 border border-emerald-800/30 text-xs text-emerald-300/80">
+                  <PackageCheck className="h-4 w-4 mt-0.5 shrink-0 text-emerald-400" />
                   <div>
-                    <span className="font-bold text-slate-200 text-sm block">Operator Hub</span>
-                    <span className="text-[10px] text-slate-500">admin@restroex.com · Owner</span>
+                    <span className="font-semibold text-emerald-300 block mb-0.5">WhatsApp Integration</span>
+                    The preparation time and pickup instructions are sent to customers automatically at checkout via the WhatsApp bot.
                   </div>
                 </div>
-
-                {[
-                  { label: "Current Password", id: "cur-pass" },
-                  { label: "New Password (min 8 chars)", id: "new-pass" },
-                  { label: "Confirm New Password", id: "conf-pass" },
-                ].map((field) => (
-                  <div key={field.id} className="space-y-1.5">
-                    <label htmlFor={field.id} className="text-[10px] uppercase font-bold tracking-wider text-slate-400">{field.label}</label>
-                    <input
-                      id={field.id}
-                      type="password"
-                      placeholder="••••••••"
-                      className="w-full bg-slate-950 border border-[#23242B] focus:border-violet-500 rounded-xl px-3 py-2 text-slate-100 focus:outline-none transition-colors"
-                      required
-                    />
-                  </div>
-                ))}
               </div>
-            </form>
-          )}
+            )}
 
+          </div>
         </div>
-      </div>
+      </form>
     </div>
   );
 }

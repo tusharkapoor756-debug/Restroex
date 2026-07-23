@@ -4,6 +4,8 @@ import { OrderStateMachine } from '../state-machine/order.state-machine';
 import { Order, OrderStatus, CheckoutValidationResult, OrderItemSnapshot } from '../types/order.types';
 import { Cart } from '../../conversations/types/conversation.types';
 import { logger } from '../../../infrastructure/logger/logger';
+import { BillingService } from '../../billing/services/billing.service';
+import { SettingsRepository } from '../../restaurants/repositories/settings.repository';
 
 export class OrderService {
   private repository: OrderRepository;
@@ -19,11 +21,10 @@ export class OrderService {
   public async validateAndRecalculateCart(restaurantId: string, cart: Cart): Promise<CheckoutValidationResult> {
     const errors: string[] = [];
     const validatedItems: OrderItemSnapshot[] = [];
-    let totalAmount = 0;
 
     if (!cart.items || cart.items.length === 0) {
       errors.push('Cart cannot be empty.');
-      return { isValid: false, errors, validatedItems, totalAmount };
+      return { isValid: false, errors, validatedItems };
     }
 
     const menuItemIds = cart.items.map((i) => i.menuItemId);
@@ -107,7 +108,6 @@ export class OrderService {
       }
 
       const totalPrice = unitPrice * cartItem.quantity;
-      totalAmount += totalPrice;
 
       validatedItems.push({
         menuItemId: cartItem.menuItemId,
@@ -123,7 +123,6 @@ export class OrderService {
       isValid: errors.length === 0,
       errors,
       validatedItems,
-      totalAmount,
     };
   }
 
@@ -135,12 +134,15 @@ export class OrderService {
     customerPhone: string,
     cart: Cart,
     idempotencyKey: string
-  ): Promise<Order> {
+  ): Promise<{ order: Order; payment: any; paymentContext?: any }> {
     // 1. Idempotency Check
     const existingOrder = await this.repository.findByIdempotencyKey(idempotencyKey);
     if (existingOrder) {
       logger.warn({ idempotencyKey }, '⚠️ Order check triggered duplicate request. Safely returning existing record.');
-      return existingOrder;
+      const paymentService = new (require('../../payments/services/payment.service').PaymentService)();
+      const existingPayment = await paymentService.getPaymentByOrder(existingOrder.id).catch(() => null);
+      const existingContext = await paymentService.resolvePaymentContext(existingOrder.restaurantId).catch(() => null);
+      return { order: existingOrder, payment: existingPayment, paymentContext: existingContext };
     }
 
     // 2. Validate Cart pricing/availability
@@ -149,19 +151,65 @@ export class OrderService {
       throw new Error(`Cart validation failed: ${validation.errors.join(', ')}`);
     }
 
+    // 3. Fetch Settings for Billing
+    const settingsRepo = new SettingsRepository();
+    const settings = await settingsRepo.getSettings(restaurantId);
+
+    // 4. Calculate Billing Breakdown
+    const billing = BillingService.calculateBreakdown(validation.validatedItems, settings);
+
+    // 4.5. Retrieve Customer Profile to bind customer_id
+    const { CustomerService } = require('../../customers/services/customer.service');
+    const customerService = new CustomerService();
+    const customer = await customerService.getOrCreateCustomer(restaurantId, customerPhone);
+
     const orderData: Omit<Order, 'id' | 'createdAt' | 'updatedAt' | 'humanReadableId' | 'receiptSnapshot'> = {
       restaurantId,
       customerPhone,
       status: 'checkout_pending',
-      totalAmount: validation.totalAmount,
+      subtotal: billing.subtotal,
+      tax: billing.taxAmount,
+      discountAmount: billing.discountAmount,
+      packingCharge: billing.packingCharge,
+      deliveryCharge: billing.deliveryCharge,
+      totalAmount: billing.totalAmount,
       idempotencyKey,
+      customerId: customer.id,
     };
 
-    // 3. Persist Order in database (including immutable snapshot items)
+    // 5. Persist Order in database (including immutable snapshot items)
     const createdOrder = await this.repository.createOrder(orderData, validation.validatedItems);
     logger.info({ orderId: createdOrder.id }, '✅ Order successfully generated and snapshotted.');
 
-    return createdOrder;
+    // 6. Create Payment Record for this Order
+    const paymentService = new (require('../../payments/services/payment.service').PaymentService)();
+
+    // Resolve which payment method to use from RestaurantSettings.
+    // usablePaymentMethods are those with a registered provider.
+    const paymentContext = await paymentService.resolvePaymentContext(restaurantId);
+    const resolvedMethod = paymentContext.resolvedPaymentMethod;
+
+    let payment = null;
+    if (resolvedMethod) {
+      // Single usable method: create payment record immediately
+      payment = await paymentService.createPayment({
+        orderId: createdOrder.id,
+        restaurantId,
+        customerPhone,
+        amount: createdOrder.totalAmount,
+        paymentMethod: resolvedMethod,
+        providerName: resolvedMethod,
+      });
+    }
+    // If resolvedMethod is null, multiple methods exist.
+    // The caller (WhatsApp handler) uses paymentContext.availablePaymentMethods
+    // to prompt the customer to choose.
+
+    return {
+      order: createdOrder,
+      payment,
+      paymentContext,
+    };
   }
 
   /**
@@ -181,7 +229,53 @@ export class OrderService {
     const updated = await this.repository.updateStatus(orderId, targetStatus);
     logger.info({ orderId, from: order.status, to: targetStatus }, '🔄 Order state transitioned successfully.');
 
+    // Write to order_status_timeline tracking table (Part 8)
+    try {
+      await db.getClient()
+        .from('order_status_timeline')
+        .insert({
+          order_id: orderId,
+          status: targetStatus,
+        });
+    } catch (err) {
+      logger.warn({ err, orderId }, 'Failed to write order timeline transition record');
+    }
+
+    // Trigger WhatsApp Notification updates to customer (Part 11)
+    try {
+      const { WhatsAppMessageService } = require('../../whatsapp/message.service');
+      const messages = new WhatsAppMessageService();
+      
+      const notificationsMap: Record<string, string> = {
+        accepted: `🍳 Restaurant accepted your order *${updated.humanReadableId || orderId}*. We are preparing your food shortly!`,
+        preparing: `🍳 Your food for order *${updated.humanReadableId || orderId}* is now being prepared!`,
+        ready: `🎉 Your order *${updated.humanReadableId || orderId}* is ready!`,
+        completed: `❤️ Your order *${updated.humanReadableId || orderId}* has been delivered. Thank you!`,
+        cancelled: `❌ Your order *${updated.humanReadableId || orderId}* has been cancelled.`,
+      };
+
+      const msgText = notificationsMap[targetStatus];
+      if (msgText) {
+        await messages.sendText(order.restaurantId, order.customerPhone, msgText);
+      }
+    } catch (err) {
+      logger.warn({ err, orderId }, 'Failed to dispatch order update notification');
+    }
+
     // Event hooks will trigger here (e.g. trigger BullMQ worker alerts)
+    if (targetStatus === 'cancelled') {
+      try {
+        const { PaymentService } = require('../../payments/services/payment.service');
+        const paymentService = new PaymentService();
+        const payment = await paymentService.getPaymentByOrder(orderId);
+        if (payment && payment.paymentStatus !== 'cancelled') {
+          logger.info({ orderId, paymentId: payment.id }, 'Syncing cancel: Transitioning payment to cancelled.');
+          await paymentService.repository.update(payment.id, { paymentStatus: 'cancelled' });
+        }
+      } catch (err) {
+        logger.warn({ err, orderId }, 'Could not automatically transition associated payment to cancelled.');
+      }
+    }
 
     return updated;
   }

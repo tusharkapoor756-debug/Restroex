@@ -64,7 +64,7 @@ export class SessionRepository {
     context: any
   ): Promise<ConversationSession> {
 
-    logger.error(
+    logger.debug(
       {
         state,
         cart,
@@ -83,7 +83,7 @@ export class SessionRepository {
       .eq('id', id)
       .select('*')
       .single();
-    logger.error(
+    logger.debug(
       {
         data,
         error,
@@ -96,6 +96,34 @@ export class SessionRepository {
     }
 
     return this.mapToDomain(data);
+  }
+
+  /**
+   * Patches only the context field of an existing session.
+   * Used by the Interactive Engine for navigation stack / screen state without triggering FSM.
+   */
+  public async patchContext(
+    restaurantId: string,
+    customerPhone: string,
+    contextPatch: Record<string, any>
+  ): Promise<void> {
+    // First fetch current session to merge context
+    const current = await this.findSession(restaurantId, customerPhone);
+    if (!current) return;
+
+    const mergedContext = {
+      ...current.context,
+      ...contextPatch,
+    };
+
+    await this.client
+      .from('conversation_sessions')
+      .update({
+        context: mergedContext,
+        last_interaction_at: new Date().toISOString(),
+      })
+      .eq('restaurant_id', restaurantId)
+      .eq('customer_phone', customerPhone);
   }
 
   /**

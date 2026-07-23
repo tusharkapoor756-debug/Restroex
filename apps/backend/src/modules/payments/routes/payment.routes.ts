@@ -1,35 +1,25 @@
-import { Router, Request, Response, NextFunction } from 'express';
-import { PaymentWebhookHandler } from '../payment.webhook';
-import { logger } from '../../../infrastructure/logger/logger';
+import { Router } from 'express';
+import { PaymentController } from '../controllers/payment.controller';
 
 const router = Router();
-const webhookHandler = new PaymentWebhookHandler();
+const controller = new PaymentController();
 
-// POST /api/v1/payments/webhook
-router.post('/webhook', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-  const signature = req.headers['x-razorpay-signature'] as string;
-  const rawBody = JSON.stringify(req.body);
+// Create new payment record
+router.post('/', (req, res) => controller.createPayment(req, res));
 
-  // 1. Verify Signature
-  const isValid = webhookHandler.verifySignature(rawBody, signature);
-  if (!isValid) {
-    logger.warn('❌ Razorpay webhook signature verification failed.');
-    res.sendStatus(401);
-    return;
-  }
+// Manual UPI flow
+router.post('/:id/upload-screenshot',    (req, res) => controller.uploadScreenshot(req, res));
+router.post('/:id/pending-verification', (req, res) => controller.markPendingVerification(req, res));
 
-  try {
-    // 2. Process event captured
-    const success = await webhookHandler.handleWebhook(req.body);
-    if (success) {
-      res.status(200).json({ status: 'ok' });
-    } else {
-      res.status(400).json({ status: 'ignored' });
-    }
-  } catch (err) {
-    logger.error({ err }, 'Error processing Razorpay payment webhook');
-    res.sendStatus(500); // Triggers retry from Razorpay on system crash
-  }
-});
+// Admin verification actions
+router.post('/:id/verify', (req, res) => controller.verifyPayment(req, res));
+router.post('/:id/reject', (req, res) => controller.rejectPayment(req, res));
+
+// Queries — NOTE: specific routes must come before /:id to prevent shadowing
+router.get('/restaurant/:restaurantId',  (req, res) => controller.getPaymentsByRestaurant(req, res));
+router.get('/order/:orderId',            (req, res) => controller.getPaymentByOrder(req, res));
+router.get('/context/:restaurantId',     (req, res) => controller.getPaymentContext(req, res));
+router.get('/:id/screenshot-url',        (req, res) => controller.getScreenshotUrl(req, res));
+router.get('/:id',                       (req, res) => controller.getPayment(req, res));
 
 export default router;

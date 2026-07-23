@@ -1,20 +1,20 @@
-import { RestaurantSettings } from "../../types";
+import { api } from '../api';
+import { FullSettings, UpdateSettingsPayload } from '../../types';
 
 export class SettingsService {
   /**
-   * Placeholder: Retrieves detailed restaurant settings (beyond basic setup).
-   * NOTE: Backend endpoint does not exist yet.
+   * Fetches the full restaurant settings (business profile + billing + payment + store config).
+   * Calls: GET /restaurants/settings
    */
-  static async getSettings(): Promise<RestaurantSettings | null> {
-    // throw new Error("Not implemented: Endpoint /settings does not exist.");
-    return null;
+  static async getSettings(): Promise<FullSettings> {
+    return api.get<FullSettings>('/restaurants/settings');
   }
-  
+
   /**
-   * Placeholder: Updates detailed restaurant settings.
+   * Updates any subset of restaurant settings.
+   * Calls: PATCH /restaurants/settings
    */
-  static async updateSettings(settings: Partial<RestaurantSettings>): Promise<RestaurantSettings | null> {
-    // throw new Error("Not implemented: Endpoint /settings does not exist.");
-    return null;
+  static async updateSettings(payload: UpdateSettingsPayload): Promise<FullSettings> {
+    return api.patch<FullSettings>('/restaurants/settings', payload);
   }
 }

@@ -35,4 +35,18 @@ export class WhatsAppService {
   static async listConversations(): Promise<WhatsAppConversation[]> {
     return [];
   }
+
+  /**
+   * GET /restaurants/settings/whatsapp-config
+   */
+  static async getWhatsAppConfig(): Promise<any> {
+    return api.get<any>("/restaurants/settings/whatsapp-config");
+  }
+
+  /**
+   * PUT /restaurants/settings/whatsapp-config
+   */
+  static async updateWhatsAppConfig(config: { orderingMode: string; homeScreenItems: string[] }): Promise<any> {
+    return api.put<any>("/restaurants/settings/whatsapp-config", config);
+  }
 }

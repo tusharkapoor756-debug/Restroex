@@ -68,22 +68,46 @@ export class WhatsAppWebhookController {
 
       const messageId = message.id;
       const customerPhone = message.from;
-      const textBody = message.text?.body?.trim();
+      let textBody = message.text?.body?.trim();
+      let interactivePayload: any = null;
+
+      if (message.type === 'interactive') {
+        const interactive = message.interactive;
+        if (interactive?.type === 'button_reply') {
+          interactivePayload = interactive.button_reply?.id;
+          textBody = interactive.button_reply?.title || '';
+        } else if (interactive?.type === 'list_reply') {
+          interactivePayload = interactive.list_reply?.id;
+          textBody = interactive.list_reply?.title || '';
+        }
+      }
+
       const wabaNumber = value?.metadata?.display_phone_number; // Business phone number
 
-      if (!textBody) {
-        // Ignore non-text messages for the pilot
+      let mediaId: string | null = null;
+      let mediaType: string | null = null;
+
+      if (message.type === 'image') {
+        mediaId = message.image?.id ?? null;
+        mediaType = 'image';
+      } else if (message.type === 'document') {
+        mediaId = message.document?.id ?? null;
+        mediaType = 'document';
+      }
+
+      if (!textBody && !interactivePayload && !mediaId) {
+        // Ignore non-text, non-interactive, non-media messages (status updates, reactions, etc.)
         res.sendStatus(200);
         return;
       }
 
-      logger.info({ messageId, customerPhone, textBody }, '📩 Received inbound WhatsApp message');
+      logger.info({ messageId, customerPhone, textBody, interactivePayload, mediaId, mediaType }, '📩 Received inbound WhatsApp message');
 
       // 3. Prevent Duplicate Message Deliveries (Idempotency Key Check)
       const redisClient = redis.getClient();
       const dedupKey = `processed:msg:${messageId}`;
-      const isDuplicate = await redisClient.get(dedupKey);
-      if (isDuplicate) {
+      const inserted = await redisClient.set(dedupKey, 'true', 'EX', 86400, 'NX');
+      if (!inserted) {
         logger.warn({ messageId }, '⚠️ Duplicate WhatsApp message received. Skipping processing.');
         res.sendStatus(200);
         return;
@@ -112,13 +136,14 @@ export class WhatsAppWebhookController {
         restaurantId,
         messageId,
         from: customerPhone,
-        textBody,
+        textBody: textBody || '',
+        interactivePayload,
         content: message,
+        mediaId,
+        mediaType,
       };
-      await this.queueProducer.addJob('process', jobPayload);
+      await this.queueProducer.addJob('process', jobPayload, { jobId: messageId });
 
-      // 6. Mark as processed after enqueueing
-      await redisClient.set(dedupKey, 'true', 'EX', 86400);
       logger.info({ messageId }, '✅ Inbound WhatsApp message enqueued for async handling');
       res.sendStatus(200);
     } catch (err) {

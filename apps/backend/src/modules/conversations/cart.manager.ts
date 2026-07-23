@@ -1,4 +1,5 @@
 import { Cart } from './types/conversation.types';
+import { getDisplayName } from '../../shared/utils/display-name.util';
 
 export class CartManager {
   /**
@@ -13,7 +14,7 @@ export class CartManager {
   /**
    * Formats the cart contents into a user-friendly string for WhatsApp responses.
    */
-  public formatCartSummary(cart: Cart, menuItemsMap: Record<string, string>): string {
+  public formatCartSummary(cart: Cart, availableMenu: any[]): string {
     if (!cart.items || cart.items.length === 0) {
       return 'Your cart is empty.';
     }
@@ -22,7 +23,7 @@ export class CartManager {
     let total = 0;
 
     cart.items.forEach((item, index) => {
-      const itemName = menuItemsMap[item.menuItemId] || 'Unknown Item';
+      const itemName = getDisplayName(item, availableMenu);
       const itemTotal = item.quantity * item.unitPrice;
       total += itemTotal;
       summary += `${index + 1}. *${itemName}* x ${item.quantity} = ₹${itemTotal.toFixed(2)}\n`;

@@ -14,6 +14,11 @@ function runReceiptVerification() {
     customerPhone: '+919876543210',
     status: 'paid',
     totalAmount: 580.00,
+    subtotal: 580.00,
+    tax: 0,
+    discountAmount: 0,
+    packingCharge: 0,
+    deliveryCharge: 0,
     idempotencyKey: 'razorpay_order_ref_id_102',
     humanReadableId: 'ORD-1024',
     receiptSnapshot: {

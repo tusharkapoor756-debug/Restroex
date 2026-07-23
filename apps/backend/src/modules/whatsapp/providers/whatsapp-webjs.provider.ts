@@ -105,7 +105,14 @@ export class WhatsAppWebJsProvider implements WhatsAppProvider {
     }
 
     session.lastSendAt = Date.now();
-    await session.client.sendMessage(this.normalizeChatId(payload.to), payload.body);
+    
+    if (payload.mediaUrl) {
+      const { MessageMedia } = await this.loadWebJs();
+      const media = await MessageMedia.fromUrl(payload.mediaUrl, { unsafeMime: true });
+      await session.client.sendMessage(this.normalizeChatId(payload.to), media, { caption: payload.body });
+    } else {
+      await session.client.sendMessage(this.normalizeChatId(payload.to), payload.body);
+    }
   }
 
   public async getStatus(restaurantId: string): Promise<WhatsAppSessionStatus> {
@@ -182,6 +189,9 @@ export class WhatsAppWebJsProvider implements WhatsAppProvider {
           headless: true,
           args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
         },
+        webVersionCache: {
+          type: 'none',
+        },
       });
 
       session.client = client;
@@ -209,6 +219,9 @@ export class WhatsAppWebJsProvider implements WhatsAppProvider {
             puppeteer: {
               headless: true,
               args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+            },
+            webVersionCache: {
+              type: 'none',
             },
           });
 
@@ -359,15 +372,15 @@ export class WhatsAppWebJsProvider implements WhatsAppProvider {
       logger.info({ restaurantId: session.restaurantId }, '[DIAGNOSTIC] EVENT: remote_session_saved');
     });
 
+    // NOTE: Only 'message' is bound — NOT 'message_create'.
+    // 'message_create' fires for BOTH inbound and outbound (fromMe) messages and
+    // would duplicate every inbound message alongside the 'message' event,
+    // creating a race on the Redis NX dedup key and causing duplicate replies.
     client.on('message', async (message: any) => {
       logger.info(
         { restaurantId: session.restaurantId, from: message.from, fromMe: message.fromMe, messageId: message.id?._serialized },
         'WhatsApp message received'
       );
-      await this.safeHandleIncomingMessage(session.restaurantId, message);
-    });
-
-    client.on('message_create', async (message: any) => {
       await this.safeHandleIncomingMessage(session.restaurantId, message);
     });
   }
@@ -540,11 +553,101 @@ export class WhatsAppWebJsProvider implements WhatsAppProvider {
     if (message.from === 'status@broadcast' || message.from?.endsWith('@broadcast')) return;
     if (message.fromMe) return;
 
+    const ALLOWED_TYPES = ['chat', 'image', 'video', 'audio', 'ptt', 'document', 'sticker', 'location', 'contact', 'vcard', 'multi_vcard'];
+    if (!message.type || !ALLOWED_TYPES.includes(message.type)) {
+      logger.info({ messageId, type: message.type }, 'System/ignored event type — skipped');
+      return;
+    }
+
     const dedupKey = `wwebjs:processed:${restaurantId}:${messageId}`;
     const inserted = await redis.getClient().set(dedupKey, 'true', 'EX', 86400, 'NX');
     if (!inserted) {
       logger.debug({ restaurantId, messageId }, 'Duplicate message — skipped');
       return;
+    }
+
+    let mediaPath: string | undefined = undefined;
+    let mediaFailed = false;
+
+    if (message.hasMedia) {
+      logger.info({ messageId, type: message.type }, '📸 Received Image/Media message. Starting media pipeline...');
+      const MAX_DOWNLOAD_RETRIES = 3;
+      let lastDownloadError: any;
+      for (let attempt = 1; attempt <= MAX_DOWNLOAD_RETRIES; attempt++) {
+        try {
+          logger.info({ messageId, attempt }, 'downloadMedia started');
+          
+          let targetMessage = message;
+          // In whatsapp-web.js, if execution context is destroyed or message object binding is lost,
+          // fetching message via client.getMessageById or re-evaluating message.downloadMedia can resolve the context.
+          const runtimeSession = this.sessions.get(restaurantId);
+          if (attempt > 1 && runtimeSession?.client) {
+            try {
+              const freshMsg = await runtimeSession.client.getMessageById(messageId);
+              if (freshMsg) {
+                targetMessage = freshMsg;
+                logger.info({ messageId, attempt }, 'Successfully re-fetched message object via client.getMessageById');
+              }
+            } catch (refetchErr) {
+              logger.warn({ messageId, refetchErr }, 'Could not re-fetch message via getMessageById');
+            }
+          }
+
+          const media = await targetMessage.downloadMedia();
+          logger.info({ messageId, attempt, success: !!media }, 'downloadMedia completed');
+          if (media) {
+            logger.info({ messageId, hasData: !!media.data, mimetype: media.mimetype, filename: media.filename }, 'media exists');
+            if (media.data) {
+              const buffer = Buffer.from(media.data, 'base64');
+              logger.info({ messageId, bufferSize: buffer.length }, 'buffer size calculated');
+              const rawExt = media.mimetype ? media.mimetype.split('/')[1] : 'jpg';
+              // Strip parameters like "; charset=utf-8" from mimetype part
+              const ext = rawExt.split(';')[0].trim() || 'jpg';
+              const tmpPath = `tmp/${restaurantId}/${messageId}.${ext}`;
+              logger.info({ messageId, ext, tmpPath }, 'file extension and path generated');
+
+              const { storageService } = require('../../../infrastructure/storage/storage.service');
+              logger.info({ messageId, bucket: 'payments', tmpPath }, 'upload started');
+              await storageService.upload('payments', tmpPath, buffer, media.mimetype);
+              logger.info({ messageId, tmpPath }, 'upload completed');
+
+              mediaPath = tmpPath;
+              lastDownloadError = undefined;
+              break; // Success — stop retrying
+            } else {
+              logger.warn({ messageId, attempt }, 'media.data is empty or undefined');
+              lastDownloadError = new Error('media.data empty');
+            }
+          } else {
+            logger.warn({ messageId, attempt }, 'downloadMedia returned null/undefined');
+            lastDownloadError = new Error('downloadMedia returned null');
+          }
+        } catch (error: any) {
+          lastDownloadError = error;
+          logger.warn({
+            error,
+            stack: error?.stack,
+            message: error?.message,
+            messageId,
+            attempt,
+          }, `downloadMedia attempt ${attempt} failed`);
+
+          // Wait before next retry (skip delay on last attempt)
+          if (attempt < MAX_DOWNLOAD_RETRIES) {
+            await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+          }
+        }
+      }
+
+      if (lastDownloadError) {
+        logger.error({
+          error: lastDownloadError,
+          stack: lastDownloadError?.stack,
+          message: lastDownloadError?.message,
+          messageId,
+        }, 'All downloadMedia attempts failed. Flagging mediaFailed=true — FSM must stay in AWAITING_PAYMENT_SCREENSHOT.');
+        mediaFailed = true;
+      }
     }
 
     const queue = queueRegistry.getQueue(QueueName.WHATSAPP_INCOMING);
@@ -559,7 +662,7 @@ export class WhatsAppWebJsProvider implements WhatsAppProvider {
         from: message.from,
         customerPhone: this.denormalizeChatId(message.from),
         textBody: message.body || '',
-        content: { body: message.body || '', type: message.type },
+        content: { body: message.body || '', type: message.type, mediaPath, mediaFailed },
       },
       { jobId: this.buildQueueJobId(restaurantId, messageId) }
     );
@@ -649,6 +752,123 @@ export class WhatsAppWebJsProvider implements WhatsAppProvider {
   private async loadWebJs(): Promise<any> {
     const packageName = 'whatsapp-web.js';
     const module = await import(packageName);
+    
+    const MessageClass = module.Message || module.default?.Message;
+    if (MessageClass && MessageClass.prototype) {
+      // 1. Patch _patch to ensure id._serialized is populated from id.$1 if needed
+      const originalPatch = MessageClass.prototype._patch;
+      MessageClass.prototype._patch = function (data: any) {
+        if (data && data.id) {
+          if (data.id._serialized == null && data.id.$1 != null) {
+            data.id._serialized = data.id.$1;
+          }
+        }
+        const res = originalPatch.call(this, data);
+        if (this.id) {
+          if (this.id._serialized == null && this.id.$1 != null) {
+            this.id._serialized = this.id.$1;
+          }
+        }
+        return res;
+      };
+
+      // 2. Patch downloadMedia to be robust against WA Web 2.3000.x changes
+      const MessageMediaClass = module.MessageMedia || module.default?.MessageMedia;
+      MessageClass.prototype.downloadMedia = async function (this: any) {
+        if (!this.hasMedia) {
+          return undefined;
+        }
+
+        const idObj = this.id;
+        const serializedId = idObj?._serialized || idObj?.$1 || (typeof idObj === 'string' ? idObj : undefined);
+        if (!serializedId) {
+          logger.warn({ idObj }, 'No serialized ID found for downloadMedia');
+          return undefined;
+        }
+
+        try {
+          const result = await this.client.pupPage.evaluate(async (msgId: string, rawIdObj: any) => {
+            const win = globalThis as any;
+            const MsgCollection = win.require('WAWebCollections').Msg;
+            let msg = MsgCollection.get(msgId);
+            
+            if (!msg && rawIdObj) {
+              const fallbackId = rawIdObj._serialized || rawIdObj.$1;
+              if (fallbackId) {
+                msg = MsgCollection.get(fallbackId);
+              }
+            }
+
+            if (!msg) {
+              try {
+                const searchId = msgId || rawIdObj?._serialized || rawIdObj?.$1;
+                const res = await MsgCollection.getMessagesById([searchId]);
+                msg = res?.messages?.[0];
+              } catch (e) {
+                // Ignore message fetch errors
+              }
+            }
+
+            if (!msg || !msg.mediaData || msg.mediaData.mediaStage === 'REUPLOADING') {
+              return null;
+            }
+
+            if (msg.mediaData.mediaStage !== 'RESOLVED') {
+              await msg.downloadMedia({
+                downloadEvenIfExpensive: true,
+                rmrReason: 1,
+              });
+            }
+
+            if (msg.mediaData.mediaStage.includes('ERROR') || msg.mediaData.mediaStage === 'FETCHING') {
+              return undefined;
+            }
+
+            try {
+              const mockQpl = {
+                addAnnotations: function () { return this; },
+                addPoint: function () { return this; },
+              };
+              const decryptedMedia = await win
+                .require('WAWebDownloadManager')
+                .downloadManager.downloadAndMaybeDecrypt({
+                  directPath: msg.directPath,
+                  encFilehash: msg.encFilehash,
+                  filehash: msg.filehash,
+                  mediaKey: msg.mediaKey,
+                  mediaKeyTimestamp: msg.mediaKeyTimestamp,
+                  type: msg.type,
+                  signal: new AbortController().signal,
+                  downloadQpl: mockQpl,
+                });
+
+              const data = await win.WWebJS.arrayBufferToBase64Async(decryptedMedia);
+              return {
+                data,
+                mimetype: msg.mimetype,
+                filename: msg.filename,
+                filesize: msg.size,
+              };
+            } catch (e: any) {
+              if (e.status && e.status === 404) return undefined;
+              throw e;
+            }
+          }, serializedId, idObj);
+
+          if (!result) return undefined;
+          return new MessageMediaClass(
+            result.mimetype,
+            result.data,
+            result.filename,
+            result.filesize
+          );
+        } catch (error: any) {
+          logger.error({ error: error.message, stack: error.stack }, 'Error in patched downloadMedia execution');
+          throw error;
+        }
+      };
+    }
+
     return {
       ...module.default,
       ...module,

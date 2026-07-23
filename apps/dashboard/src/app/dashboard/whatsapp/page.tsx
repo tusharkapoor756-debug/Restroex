@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { toast } from "../../../components/menu/Toast";
 import {
   MessageSquare,
   Phone,
@@ -16,6 +17,11 @@ import {
   Smartphone,
   ChevronRight,
   AlertTriangle,
+  Sliders,
+  Settings2,
+  Sparkles,
+  GripVertical,
+  Check,
 } from "lucide-react";
 import { WhatsAppService } from "../../../lib/services/whatsapp.service";
 import {
@@ -81,6 +87,37 @@ export default function WhatsAppPage() {
   const [conversations] = useState<WhatsAppConversation[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  // WhatsApp Config States
+  const [orderingMode, setOrderingMode] = useState<"ai_only" | "interactive_only" | "hybrid">("hybrid");
+  const [homeScreenItems, setHomeScreenItems] = useState<string[]>([]);
+  const [savingConfig, setSavingConfig] = useState(false);
+
+  useEffect(() => {
+    WhatsAppService.getWhatsAppConfig()
+      .then((res) => {
+        if (res?.data) {
+          setOrderingMode(res.data.orderingMode);
+          setHomeScreenItems(res.data.homeScreenItems || []);
+        }
+      })
+      .catch((err) => console.error("Failed to load WhatsApp config:", err));
+  }, []);
+
+  const handleSaveConfig = async () => {
+    setSavingConfig(true);
+    try {
+      await WhatsAppService.updateWhatsAppConfig({
+        orderingMode,
+        homeScreenItems,
+      });
+      toast("WhatsApp configurations saved successfully", "success");
+    } catch (err) {
+      toast("Failed to save WhatsApp config", "error");
+    } finally {
+      setSavingConfig(false);
+    }
+  };
 
   // Track previous phase in a ref so derivePhase can use it without stale closure
   const phaseRef = useRef<UiPhase>("disconnected");
@@ -548,6 +585,159 @@ export default function WhatsAppPage() {
               </tbody>
             </table>
           )}
+        </div>
+      </div>
+
+      {/* ── WhatsApp Ordering Configuration ──────────────────────────────── */}
+      <div className="bg-[#0e0f14]/50 border border-[#23242B] rounded-2xl p-6 mt-6 space-y-6">
+        <div className="flex items-center justify-between border-b border-[#23242B] pb-4">
+          <div className="flex items-center gap-2">
+            <Settings2 className="h-5 w-5 text-violet-400" />
+            <h2 className="text-base font-bold text-white tracking-wide">WhatsApp Native Ordering Configuration</h2>
+          </div>
+          <button
+            onClick={handleSaveConfig}
+            disabled={savingConfig}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-violet-200 bg-violet-600 hover:bg-violet-500 rounded-xl transition-all shadow-[0_0_15px_rgba(124,58,237,0.3)] disabled:opacity-50"
+          >
+            {savingConfig ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Check className="h-3.5 w-3.5" />
+            )}
+            {savingConfig ? "Saving..." : "Save Settings"}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Section 1: Ordering Mode */}
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                <Sliders className="h-4 w-4 text-violet-400" /> Ordering Mode
+              </h3>
+              <p className="text-slate-400 text-xs mt-1 leading-relaxed">
+                Choose how Restroex responds to customer messages. Default is hybrid mode.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {([
+                {
+                  key: "hybrid",
+                  title: "Hybrid Mode (Recommended)",
+                  desc: "Deterministic button/list clicks are processed instantly. Typing naturally routes to the AI Employee for free-text conversations.",
+                },
+                {
+                  key: "ai_only",
+                  title: "AI Only",
+                  desc: "Every message is handled dynamically by the AI Employee. Disables deterministic button menus.",
+                },
+                {
+                  key: "interactive_only",
+                  title: "Interactive Only",
+                  desc: "Forces a fully deterministic flow. Customers must use buttons and lists. Any typed message is blocked with a menu re-prompt.",
+                },
+              ] as const).map((mode) => (
+                <div
+                  key={mode.key}
+                  onClick={() => setOrderingMode(mode.key)}
+                  className={`p-4 rounded-xl border-2 transition-all cursor-pointer flex items-start gap-3
+                    ${orderingMode === mode.key
+                      ? "border-violet-600 bg-violet-500/10 shadow-[0_0_15px_rgba(124,58,237,0.1)]"
+                      : "border-[#23242B] bg-[#12131A]/30 hover:border-slate-700"
+                    }
+                  `}
+                >
+                  <div
+                    className={`w-4 h-4 rounded-full border-2 mt-0.5 flex items-center justify-center shrink-0
+                      ${orderingMode === mode.key ? "border-violet-500" : "border-slate-600"}
+                    `}
+                  >
+                    {orderingMode === mode.key && (
+                      <div className="w-2 h-2 rounded-full bg-violet-500" />
+                    )}
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-bold text-white">{mode.title}</p>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">{mode.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Section 2: Home Screen Card Builder */}
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                <Sparkles className="h-4 w-4 text-violet-400" /> Home Screen Cards
+              </h3>
+              <p className="text-slate-400 text-xs mt-1 leading-relaxed">
+                Arrange the order of menu cards displayed when customers start a WhatsApp order.
+              </p>
+            </div>
+
+            <div className="space-y-2 max-w-md">
+              {homeScreenItems.map((item, idx) => {
+                const displayNames: Record<string, string> = {
+                  browse_menu: "🍽️ Browse Menu",
+                  best_sellers: "🔥 Best Sellers",
+                  offers: "🎁 Today's Offers",
+                  track_order: "📦 Track Order",
+                  talk_to_staff: "☎️ Talk to Staff",
+                };
+
+                const moveUp = (e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  if (idx === 0) return;
+                  const newItems = [...homeScreenItems];
+                  const [moved] = newItems.splice(idx, 1);
+                  newItems.splice(idx - 1, 0, moved);
+                  setHomeScreenItems(newItems);
+                };
+
+                const moveDown = (e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  if (idx === homeScreenItems.length - 1) return;
+                  const newItems = [...homeScreenItems];
+                  const [moved] = newItems.splice(idx, 1);
+                  newItems.splice(idx + 1, 0, moved);
+                  setHomeScreenItems(newItems);
+                };
+
+                return (
+                  <div
+                    key={item}
+                    className="flex items-center justify-between p-3.5 rounded-xl border border-[#23242B] bg-[#12131A]/30 group hover:border-slate-700 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <GripVertical className="h-4 w-4 text-slate-600 shrink-0" />
+                      <span className="text-xs font-semibold text-slate-200">
+                        {displayNames[item] || item}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={moveUp}
+                        disabled={idx === 0}
+                        className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:hover:bg-transparent"
+                      >
+                        ▲
+                      </button>
+                      <button
+                        onClick={moveDown}
+                        disabled={idx === homeScreenItems.length - 1}
+                        className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:hover:bg-transparent"
+                      >
+                        ▼
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
     </div>

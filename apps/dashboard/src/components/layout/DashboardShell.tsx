@@ -20,7 +20,8 @@ import {
   Power,
   ChevronDown,
   Bot,
-  Cpu
+  Cpu,
+  CreditCard
 } from "lucide-react";
 
 interface DashboardShellProps {
@@ -53,6 +54,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const navItems = [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { label: "Orders & Live Queue", href: "/dashboard/orders", icon: ShoppingBag },
+    { label: "Payments", href: "/dashboard/payments", icon: CreditCard },
     { label: "Menu Catalog", href: "/dashboard/menu", icon: Utensils },
     { label: "Customers & CRM", href: "/dashboard/customers", icon: Users },
     { label: "Inventory & Stock", href: "/dashboard/inventory", icon: Boxes },

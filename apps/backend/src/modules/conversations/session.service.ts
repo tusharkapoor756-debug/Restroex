@@ -16,6 +16,37 @@ export class SessionService {
   }
 
   /**
+   * Serializes the execution of the entire inbound message processing pipeline for a customer.
+   */
+  public async runPipelineLocked<T>(
+    restaurantId: string,
+    customerPhone: string,
+    fn: () => Promise<T>
+  ): Promise<T> {
+    const lockKey = `lock:pipeline:${restaurantId}:${customerPhone}`;
+    const redisClient = redis.getClient();
+    let acquired: string | null = null;
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      acquired = await redisClient.set(lockKey, 'locked', 'PX', 30000, 'NX');
+      if (acquired) {
+        logger.info({ restaurantId, customerPhone, attempt }, '✅ Pipeline lock acquired');
+        break;
+      }
+      logger.warn({ restaurantId, customerPhone, attempt }, '⚠️ Pipeline lock failed, retrying...');
+      await new Promise((r) => setTimeout(r, 150 * attempt));
+    }
+    if (!acquired) {
+      throw new Error(`Pipeline lock acquisition failed after retries for customer ${customerPhone}`);
+    }
+    try {
+      return await fn();
+    } finally {
+      await redisClient.del(lockKey);
+      logger.info({ restaurantId, customerPhone }, '🔓 Pipeline lock released');
+    }
+  }
+
+  /**
    * Safe execution wrapper that runs FSM actions under a Redis Mutex Lock to serialize processing.
    */
   public async executeSessionAction<T>(
@@ -49,15 +80,26 @@ export class SessionService {
       }
 
       // 3. Handle Timeout Check (Inactivity Auto-Reset)
+      // NOTE: Onboarding and recovery states are intentionally excluded from timeout reset.
+      // These are user-driven flows (waiting for name / address / recovery choice) and
+      // should never be wiped mid-flow by an automated timer.
+      const TIMEOUT_EXEMPT_STATES: ConversationState[] = [
+        ConversationState.IDLE,
+        ConversationState.HUMAN_TAKEOVER,
+        ConversationState.AWAITING_NAME,
+        ConversationState.AWAITING_ADDRESS,
+        ConversationState.AWAITING_PROFILE_CONFIRMATION,
+        ConversationState.AWAITING_RECOVERY,
+      ];
       const lastInteractionTime = new Date(session.lastInteractionAt).getTime();
       const isTimedOut = Date.now() - lastInteractionTime > SessionService.SESSION_TIMEOUT_MS;
 
-      if (isTimedOut && session.state !== ConversationState.IDLE && session.state !== ConversationState.HUMAN_TAKEOVER) {
-        logger.info({ phone: customerPhone }, 'Session timed out due to inactivity. Resetting to IDLE.');
+      if (isTimedOut && !TIMEOUT_EXEMPT_STATES.includes(session.state)) {
+        logger.info({ phone: customerPhone }, 'Session timed out due to inactivity. Resetting conversation state to IDLE but preserving cart.');
         session = await this.repository.updateSession(
           session.id,
           ConversationState.IDLE,
-          { items: [] },
+          session.cart,
           {}
         );
       }
@@ -75,6 +117,32 @@ export class SessionService {
         updatedCart,
         updatedContext
       );
+
+      // Sync with customer_carts table
+      try {
+        const { cartService: innerCartService } = require('./services/cart.service');
+        const dbCart = await innerCartService.getOrCreateActiveCart(restaurantId, customerPhone);
+        
+        if (event.name === 'RESET') {
+          // Keep old cart as abandoned, rather than wiping it
+          await innerCartService.updateStatus(dbCart.id, 'abandoned');
+        } else {
+          // Sync items
+          await innerCartService.updateItems(dbCart.id, updatedCart.items);
+          // Sync status
+          let nextCartStatus: any = 'active';
+          if (nextState === ConversationState.AWAITING_CONFIRMATION) {
+            nextCartStatus = 'checkout_pending';
+          } else if (nextState === ConversationState.AWAITING_PAYMENT_SCREENSHOT || nextState === ConversationState.AWAITING_PAYMENT) {
+            nextCartStatus = 'payment_pending';
+          } else if (nextState === ConversationState.PAYMENT_COMPLETED) {
+            nextCartStatus = 'completed';
+          }
+          await innerCartService.updateStatus(dbCart.id, nextCartStatus);
+        }
+      } catch (err) {
+        logger.error({ err, customerPhone }, 'Failed to sync session cart with customer_carts table');
+      }
 
       logger.info(
         { from: session.state, to: nextState, event: event.name },

@@ -6,9 +6,18 @@ export class ConversationTransitions {
   private static readonly TRANSITION_MAP: Record<ConversationState, Partial<Record<FSMEventName, ConversationState>>> = {
     [ConversationState.IDLE]: {
       START_ORDER: ConversationState.AWAITING_ITEM,
+      ITEM_ADDED: ConversationState.AWAITING_ITEM,
+      NEED_VARIANT: ConversationState.AWAITING_VARIANT,
+      START_ONBOARDING: ConversationState.AWAITING_NAME,
+      START_RECOVERY: ConversationState.AWAITING_RECOVERY,
     },
     [ConversationState.AWAITING_ITEM]: {
-      ITEM_ADDED: ConversationState.AWAITING_ITEM, // Staying to append more items
+      ITEM_ADDED: ConversationState.AWAITING_ITEM,
+      ITEM_REMOVED: ConversationState.AWAITING_ITEM,
+      ITEM_UPDATED: ConversationState.AWAITING_ITEM,
+      VARIANT_UPDATED: ConversationState.AWAITING_ITEM,
+      QUANTITY_UPDATED: ConversationState.AWAITING_ITEM,
+      ADD_MORE: ConversationState.AWAITING_ITEM,
       NEED_VARIANT: ConversationState.AWAITING_VARIANT,
       SET_QUANTITY: ConversationState.AWAITING_QUANTITY,
       PROCEED_TO_CHECKOUT: ConversationState.AWAITING_CONFIRMATION,
@@ -22,15 +31,34 @@ export class ConversationTransitions {
     },
     [ConversationState.AWAITING_CONFIRMATION]: {
       CONFIRM_ORDER: ConversationState.AWAITING_PAYMENT,
+      AWAIT_PAYMENT_SCREENSHOT: ConversationState.AWAITING_PAYMENT_SCREENSHOT,
       ADD_MORE: ConversationState.AWAITING_ITEM,
     },
     [ConversationState.AWAITING_PAYMENT]: {
       PAYMENT_RECEIVED: ConversationState.PAYMENT_COMPLETED,
     },
+    [ConversationState.AWAITING_PAYMENT_SCREENSHOT]: {
+      SCREENSHOT_UPLOADED: ConversationState.PAYMENT_COMPLETED,
+    },
     [ConversationState.PAYMENT_COMPLETED]: {
       RESET: ConversationState.IDLE,
     },
     [ConversationState.HUMAN_TAKEOVER]: {
+      RESET: ConversationState.IDLE,
+    },
+    [ConversationState.AWAITING_NAME]: {
+      PROVIDE_NAME: ConversationState.AWAITING_ADDRESS,
+      START_ONBOARDING: ConversationState.AWAITING_NAME, // idempotent re-entry
+    },
+    [ConversationState.AWAITING_ADDRESS]: {
+      PROVIDE_ADDRESS: ConversationState.AWAITING_PROFILE_CONFIRMATION,
+    },
+    [ConversationState.AWAITING_PROFILE_CONFIRMATION]: {
+      CONFIRM_PROFILE: ConversationState.AWAITING_ITEM,
+      EDIT_PROFILE: ConversationState.AWAITING_NAME,
+    },
+    [ConversationState.AWAITING_RECOVERY]: {
+      CONFIRM_PROFILE: ConversationState.AWAITING_ITEM,
       RESET: ConversationState.IDLE,
     },
   };

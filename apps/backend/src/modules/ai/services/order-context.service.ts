@@ -2,6 +2,7 @@ import { SessionRepository } from '../../conversations/repositories/session.repo
 import { SessionService } from '../../conversations/session.service';
 import { RestaurantRepository } from '../../restaurants/repositories/restaurant.repository';
 import { MenuRepository } from '../../menu/repositories/menu.repository';
+import { getDisplayName } from '../../../shared/utils/display-name.util';
 
 export class OrderContextService {
 
@@ -44,7 +45,7 @@ export class OrderContextService {
 
         // Menu
         const menuItems =
-            await this.menuRepository.listByRestaurant(
+            await this.menuRepository.listByRestaurantWithVariants(
                 restaurantId,
             );
 
@@ -84,8 +85,7 @@ export class OrderContextService {
                         item => item.id === cartItem.menuItemId,
                     );
 
-                const itemName =
-                    menuItem?.name || 'Unknown Item';
+                const itemName = getDisplayName(cartItem, menuItems);
 
                 const lineTotal =
                     cartItem.quantity *

@@ -6,5 +6,10 @@ export enum ConversationState {
   AWAITING_CONFIRMATION = 'awaiting_confirmation',
   AWAITING_PAYMENT = 'awaiting_payment',
   PAYMENT_COMPLETED = 'payment_completed',
+  AWAITING_PAYMENT_SCREENSHOT = 'awaiting_payment_screenshot',
   HUMAN_TAKEOVER = 'human_takeover',
+  AWAITING_NAME = 'awaiting_name',
+  AWAITING_ADDRESS = 'awaiting_address',
+  AWAITING_PROFILE_CONFIRMATION = 'awaiting_profile_confirmation',
+  AWAITING_RECOVERY = 'awaiting_recovery',
 }

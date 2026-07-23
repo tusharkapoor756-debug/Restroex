@@ -12,7 +12,7 @@ export class OrderRepository {
   public async findById(id: string): Promise<Order | null> {
     const { data, error } = await this.client
       .from('orders')
-      .select('*, items:order_items(*)')
+      .select('*, items:order_items(*), customer:customers(*), payments(*)')
       .eq('id', id)
       .maybeSingle();
 
@@ -61,11 +61,18 @@ export class OrderRepository {
   }
 
   public async findActiveOrders(restaurantId: string): Promise<Order[]> {
-    const activeStatuses: OrderStatus[] = ['paid', 'accepted', 'preparing', 'ready'];
+    const activeStatuses: OrderStatus[] = [
+      'checkout_pending',
+      'payment_pending',
+      'paid',
+      'accepted',
+      'preparing',
+      'ready'
+    ];
 
     const { data, error } = await this.client
       .from('orders')
-      .select('*, items:order_items(*)')
+      .select('*, items:order_items(*), customer:customers(*), payments(*)')
       .eq('restaurant_id', restaurantId)
       .in('status', activeStatuses)
       .order('created_at', { ascending: true });
@@ -131,9 +138,15 @@ export class OrderRepository {
         customer_phone: orderData.customerPhone,
         status: orderData.status,
         total_amount: orderData.totalAmount,
+        subtotal: orderData.subtotal,
+        tax: orderData.tax,
+        discount_amount: orderData.discountAmount,
+        packing_charge: orderData.packingCharge,
+        delivery_charge: orderData.deliveryCharge,
         idempotency_key: orderData.idempotencyKey,
         human_readable_id: humanReadableId,
         receipt_snapshot: receiptSnapshot,
+        customer_id: orderData.customerId,
       })
       .select('*')
       .single();
@@ -177,12 +190,30 @@ export class OrderRepository {
    * Updates an order's status and logs transitions.
    */
   public async updateStatus(id: string, status: OrderStatus): Promise<Order> {
+    const payload: Record<string, any> = {
+      status,
+      updated_at: new Date().toISOString(),
+    };
+
+    const now = new Date().toISOString();
+    if (status === 'paid') {
+      payload.paid_at = now;
+      payload.payment_verified_at = now;
+    } else if (status === 'accepted') {
+      payload.accepted_at = now;
+    } else if (status === 'preparing') {
+      payload.preparing_started_at = now;
+    } else if (status === 'ready') {
+      payload.ready_at = now;
+    } else if (status === 'completed') {
+      payload.completed_at = now;
+    } else if (status === 'cancelled') {
+      payload.cancelled_at = now;
+    }
+
     const { data, error } = await this.client
       .from('orders')
-      .update({
-        status,
-        updated_at: new Date().toISOString(),
-      })
+      .update(payload)
       .eq('id', id)
       .select('*')
       .single();
@@ -209,18 +240,65 @@ export class OrderRepository {
       }))
       : undefined;
 
+    const payment = row.payments && row.payments.length > 0 ? {
+      id: row.payments[0].id,
+      orderId: row.payments[0].order_id,
+      restaurantId: row.payments[0].restaurant_id,
+      customerPhone: row.payments[0].customer_phone,
+      paymentMethod: row.payments[0].payment_method,
+      providerName: row.payments[0].provider_name,
+      paymentStatus: row.payments[0].payment_status,
+      amount: Number(row.payments[0].amount),
+      currency: row.payments[0].currency,
+      gatewayData: row.payments[0].gateway_data ?? {},
+      verifiedBy: row.payments[0].verified_by,
+      verificationNotes: row.payments[0].verification_notes,
+      verifiedAt: row.payments[0].verified_at,
+      verifiedAmount: row.payments[0].verified_amount ? Number(row.payments[0].verified_amount) : null,
+      verifiedTransactionReference: row.payments[0].verified_transaction_reference,
+      rejectedReason: row.payments[0].rejected_reason,
+      failureReason: row.payments[0].failure_reason,
+      idempotencyKey: row.payments[0].idempotency_key,
+      paymentAttempt: Number(row.payments[0].payment_attempt ?? 1),
+      expiresAt: row.payments[0].expires_at,
+      metadata: row.payments[0].metadata ?? {},
+      initiatedAt: row.payments[0].initiated_at,
+      completedAt: row.payments[0].completed_at,
+      failedAt: row.payments[0].failed_at,
+      createdAt: row.payments[0].created_at,
+      updatedAt: row.payments[0].updated_at,
+    } : undefined;
+
     return {
       id: row.id,
       restaurantId: row.restaurant_id,
       customerPhone: row.customer_phone,
       status: row.status as OrderStatus,
       totalAmount: Number(row.total_amount),
+      subtotal: Number(row.subtotal || 0),
+      tax: Number(row.tax || 0),
+      discountAmount: Number(row.discount_amount || 0),
+      packingCharge: Number(row.packing_charge || 0),
+      deliveryCharge: Number(row.delivery_charge || 0),
       idempotencyKey: row.idempotency_key,
       humanReadableId: row.human_readable_id,
       receiptSnapshot: row.receipt_snapshot,
+      paidAt: row.paid_at,
+      paymentVerifiedAt: row.payment_verified_at,
+      acceptedAt: row.accepted_at,
+      preparingStartedAt: row.preparing_started_at,
+      estimatedReadyAt: row.estimated_ready_at,
+      readyAt: row.ready_at,
+      collectedAt: row.collected_at,
+      completedAt: row.completed_at,
+      cancelledAt: row.cancelled_at,
+      invoiceNumber: row.invoice_number,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       items,
+      customerId: row.customer_id,
+      customerName: row.customer?.name || row.customer_name || null,
+      payment,
     };
   }
 }

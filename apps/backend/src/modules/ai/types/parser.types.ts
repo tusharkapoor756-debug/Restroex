@@ -22,6 +22,7 @@ export interface ParseResult {
   intent: 'add_to_cart' | 'checkout' | 'cancel' | 'view_menu' | 'unknown';
   overallConfidence: number;
   isFallbackTriggered: boolean;
+  hasUnmatched?: boolean;
   rawInput: string;
 }
 

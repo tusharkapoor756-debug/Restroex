@@ -38,10 +38,21 @@ If something is missing politely say you don't know.`,
                 ],
             });
 
-            return (
-                response.choices[0]?.message?.content?.trim() ??
-                'Sorry, no response.'
-            );
+            let responseText = response.choices[0]?.message?.content?.trim() ?? '';
+
+            // Remove thinking/reasoning blocks
+            responseText = responseText.replace(/<think>[\s\S]*?<\/think>/gi, '');
+            // Remove safety warnings
+            responseText = responseText.replace(/User Safety:\s*safe/gi, '');
+            responseText = responseText.replace(/Safety rating:.*/gi, '');
+
+            responseText = responseText.trim();
+
+            if (!responseText) {
+                return 'Sorry, no response.';
+            }
+
+            return responseText;
 
         } catch (error) {
 

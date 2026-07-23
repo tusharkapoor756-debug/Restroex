@@ -21,6 +21,8 @@ router.use('/payments', paymentRoutes);
 router.use('/menu', menuRoutes);
 router.use(orderRoutes);
 router.use(receiptRoutes);
+import uploadRoutes from './upload.routes';
+router.use('/media', uploadRoutes);
 
 
 // Feature modules will be registered here:
