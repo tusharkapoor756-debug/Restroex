@@ -137,7 +137,7 @@ export class PaymentService {
 
   public async verifyPayment(
     paymentId: string,
-    verifiedBy: string,
+    verifiedBy?: string,
     notes?: string,
     verifiedAmount?: number,
     verifiedTransactionReference?: string,
@@ -147,7 +147,7 @@ export class PaymentService {
 
     const updated = await this.repository.update(paymentId, {
       paymentStatus: 'verified',
-      verifiedBy,
+      ...(verifiedBy && { verifiedBy }),
       verificationNotes: notes,
       verifiedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
@@ -178,7 +178,7 @@ export class PaymentService {
       logger.warn({ err, paymentId }, 'Could not send WhatsApp verification notification.');
     }
 
-    logger.info({ paymentId, verifiedBy }, '✅ Payment verified.');
+    logger.info({ paymentId, verifiedBy: verifiedBy ?? null }, '✅ Payment verified.');
     return updated;
   }
 

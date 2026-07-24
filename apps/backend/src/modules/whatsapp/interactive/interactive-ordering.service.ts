@@ -8,7 +8,10 @@ import { RestaurantRepository } from '../../restaurants/repositories/restaurant.
 import { logger } from '../../../infrastructure/logger/logger';
 
 export class InteractiveOrderingService {
-  private messageService = new WhatsAppMessageService();
+  private get messageService(): any {
+    const { WhatsAppMessageService } = require('../message.service');
+    return new WhatsAppMessageService();
+  }
   private sessionService = new SessionService();
   private sessionRepository = new SessionRepository();
   private restaurantRepo = new RestaurantRepository();

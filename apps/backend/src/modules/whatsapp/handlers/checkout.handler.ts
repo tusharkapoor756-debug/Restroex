@@ -32,11 +32,17 @@ export class CheckoutHandler {
 
         const existingOrderId = session.context.checkoutOrderId;
         if (existingOrderId) {
-            logger.info({ existingOrderId }, 'Found existing checkout order in session context. Reusing.');
             const paymentService = new (require('../../payments/services/payment.service').PaymentService)();
             order = await this.orderService['repository'].findById(existingOrderId);
             if (order) {
-                payment = await paymentService.getPaymentByOrder(existingOrderId).catch(() => null);
+                const TERMINAL_STATUSES = ['cancelled', 'completed', 'refunded'];
+                if (TERMINAL_STATUSES.includes(order.status)) {
+                    logger.info({ existingOrderId, status: order.status }, 'Existing order in session context is terminal. Will create fresh order.');
+                    order = null;
+                } else {
+                    logger.info({ existingOrderId, status: order.status }, 'Found active checkout order in session context. Reusing.');
+                    payment = await paymentService.getPaymentByOrder(existingOrderId).catch(() => null);
+                }
             }
         }
 

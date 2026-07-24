@@ -76,13 +76,15 @@ export class ActionExecutorService {
   private readonly validator: ActionValidatorService;
   private readonly sessionService: SessionService;
   private readonly menuHandler: MenuHandler;
-  private readonly checkoutHandler: CheckoutHandler;
+  private get checkoutHandler(): any {
+    const { CheckoutHandler } = require('../../whatsapp/handlers/checkout.handler');
+    return new CheckoutHandler();
+  }
 
   constructor() {
     this.validator = new ActionValidatorService();
     this.sessionService = new SessionService();
     this.menuHandler = new MenuHandler();
-    this.checkoutHandler = new CheckoutHandler();
   }
 
   // ─── Public API ─────────────────────────────────────────────────────────────

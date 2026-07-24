@@ -135,14 +135,28 @@ export class OrderService {
     cart: Cart,
     idempotencyKey: string
   ): Promise<{ order: Order; payment: any; paymentContext?: any }> {
-    // 1. Idempotency Check
-    const existingOrder = await this.repository.findByIdempotencyKey(idempotencyKey);
-    if (existingOrder) {
-      logger.warn({ idempotencyKey }, '⚠️ Order check triggered duplicate request. Safely returning existing record.');
+    // 1. Active Idempotency Check — return existing order ONLY if it is still active (non-terminal)
+    const existingActiveOrder = await this.repository.findActiveByIdempotencyKey(idempotencyKey);
+    if (existingActiveOrder) {
+      logger.warn(
+        { idempotencyKey, orderId: existingActiveOrder.id, status: existingActiveOrder.status },
+        '⚠️ Active order found for this checkout. Safely returning existing active record.'
+      );
       const paymentService = new (require('../../payments/services/payment.service').PaymentService)();
-      const existingPayment = await paymentService.getPaymentByOrder(existingOrder.id).catch(() => null);
-      const existingContext = await paymentService.resolvePaymentContext(existingOrder.restaurantId).catch(() => null);
-      return { order: existingOrder, payment: existingPayment, paymentContext: existingContext };
+      const existingPayment = await paymentService.getPaymentByOrder(existingActiveOrder.id).catch(() => null);
+      const existingContext = await paymentService.resolvePaymentContext(existingActiveOrder.restaurantId).catch(() => null);
+      return { order: existingActiveOrder, payment: existingPayment, paymentContext: existingContext };
+    }
+
+    // 1b. If a historical terminal order exists with exact key, generate a unique key suffix for the new order
+    let effectiveIdempotencyKey = idempotencyKey;
+    const historicalOrder = await this.repository.findByIdempotencyKey(idempotencyKey);
+    if (historicalOrder) {
+      effectiveIdempotencyKey = `${idempotencyKey}:${Date.now()}`;
+      logger.info(
+        { oldOrderId: historicalOrder.id, newKey: effectiveIdempotencyKey },
+        'Historical order is in terminal state. Creating a fresh order with unique idempotency key.'
+      );
     }
 
     // 2. Validate Cart pricing/availability
@@ -173,7 +187,7 @@ export class OrderService {
       packingCharge: billing.packingCharge,
       deliveryCharge: billing.deliveryCharge,
       totalAmount: billing.totalAmount,
-      idempotencyKey,
+      idempotencyKey: effectiveIdempotencyKey,
       customerId: customer.id,
     };
 

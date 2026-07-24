@@ -43,6 +43,26 @@ export class OrderRepository {
   }
 
   /**
+   * Finds the latest ACTIVE (non-terminal) order matching the exact idempotency key
+   * or key prefix. Ignores terminal orders (cancelled, completed, refunded).
+   */
+  public async findActiveByIdempotencyKey(key: string): Promise<Order | null> {
+    const { data, error } = await this.client
+      .from('orders')
+      .select('*')
+      .or(`idempotency_key.eq.${key},idempotency_key.like.${key}:%`)
+      .order('created_at', { ascending: false });
+
+    if (error || !data || data.length === 0) return null;
+
+    const TERMINAL_STATUSES: OrderStatus[] = ['cancelled', 'completed', 'refunded'];
+    const activeRow = data.find((row) => !TERMINAL_STATUSES.includes(row.status as OrderStatus));
+
+    if (!activeRow) return null;
+    return this.mapToDomain(activeRow);
+  }
+
+  /**
    * Fetches an order by its human readable reference ID, including all order item snapshots.
    */
   public async findByHumanReadableId(humanReadableId: string): Promise<Order | null> {
@@ -198,13 +218,8 @@ export class OrderRepository {
     const now = new Date().toISOString();
     if (status === 'paid') {
       payload.paid_at = now;
-      payload.payment_verified_at = now;
     } else if (status === 'accepted') {
       payload.accepted_at = now;
-    } else if (status === 'preparing') {
-      payload.preparing_started_at = now;
-    } else if (status === 'ready') {
-      payload.ready_at = now;
     } else if (status === 'completed') {
       payload.completed_at = now;
     } else if (status === 'cancelled') {

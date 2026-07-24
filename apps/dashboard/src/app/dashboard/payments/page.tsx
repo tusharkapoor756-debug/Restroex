@@ -131,7 +131,6 @@ function VerificationModal({ payment, onClose, onVerified, onRejected }: ModalPr
   const [screenshotError, setScreenshotError] = useState<string | null>(null);
 
   const [action, setAction] = useState<"idle" | "verifying" | "rejecting">("idle");
-  const [verifiedBy, setVerifiedBy] = useState("Admin");
   const [verifiedAmount, setVerifiedAmount] = useState(String(payment.amount));
   const [verifiedTxRef, setVerifiedTxRef] = useState("");
   const [verifyNotes, setVerifyNotes] = useState("");
@@ -161,7 +160,6 @@ function VerificationModal({ payment, onClose, onVerified, onRejected }: ModalPr
     setAction("verifying");
     try {
       await PaymentsService.verifyPayment(payment.id, {
-        verifiedBy,
         notes: verifyNotes || undefined,
         verifiedAmount: verifiedAmount ? Number(verifiedAmount) : undefined,
         verifiedTransactionReference: verifiedTxRef || undefined,
@@ -280,15 +278,6 @@ function VerificationModal({ payment, onClose, onVerified, onRejected }: ModalPr
             {!showRejectForm ? (
               <>
                 <div className="space-y-3">
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">Verified By</label>
-                    <input
-                      value={verifiedBy}
-                      onChange={(e) => setVerifiedBy(e.target.value)}
-                      className="w-full rounded-lg border border-[#23242B] bg-[#0D0D0F] px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-violet-500/50 transition-colors"
-                      placeholder="Your name"
-                    />
-                  </div>
                   <div>
                     <label className="text-xs text-slate-400 block mb-1">Verified Amount (₹)</label>
                     <input

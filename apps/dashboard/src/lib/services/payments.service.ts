@@ -2,7 +2,7 @@ import { api } from "../api";
 import { Payment } from "../../types";
 
 interface VerifyPaymentPayload {
-  verifiedBy: string;
+  verifiedBy?: string;
   notes?: string;
   verifiedAmount?: number;
   verifiedTransactionReference?: string;

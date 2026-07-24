@@ -11,10 +11,9 @@ export class CheckoutTool implements Tool<void, any> {
     },
   };
 
-  private readonly checkoutHandler: CheckoutHandler;
-
-  constructor() {
-    this.checkoutHandler = new CheckoutHandler();
+  private get checkoutHandler(): CheckoutHandler {
+    const { CheckoutHandler } = require('../../whatsapp/handlers/checkout.handler');
+    return new CheckoutHandler();
   }
 
   public async execute(args: void, context: ToolContext): Promise<any> {

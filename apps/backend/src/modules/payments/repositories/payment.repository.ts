@@ -80,7 +80,12 @@ export class PaymentRepository {
     if (dto.paymentStatus)      payload.payment_status    = dto.paymentStatus;
     if (dto.gatewayData)        payload.gateway_data      = dto.gatewayData;
     if (dto.metadata)           payload.metadata          = dto.metadata;
-    if (dto.verifiedBy)         payload.verified_by       = dto.verifiedBy;
+    if (dto.verifiedBy) {
+      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(dto.verifiedBy);
+      if (isUuid) {
+        payload.verified_by = dto.verifiedBy;
+      }
+    }
     if (dto.verificationNotes)  payload.verification_notes = dto.verificationNotes;
     if (dto.verifiedAt)         payload.verified_at       = dto.verifiedAt;
     if (dto.verifiedAmount !== undefined) payload.verified_amount = dto.verifiedAmount;

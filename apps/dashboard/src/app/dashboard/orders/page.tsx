@@ -465,7 +465,7 @@ export default function OrdersPage() {
                             <button
                               onClick={async () => {
                                 try {
-                                  await PaymentsService.verifyPayment(selectedOrder.payment!.id, { verifiedBy: 'Dashboard Admin' });
+                                  await PaymentsService.verifyPayment(selectedOrder.payment!.id, {});
                                   fetchOrders();
                                 } catch (e: any) {
                                   alert('Failed to verify payment: ' + e.message);

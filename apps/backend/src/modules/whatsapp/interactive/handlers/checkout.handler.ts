@@ -2,7 +2,10 @@ import { InteractiveScreen } from '../interactive-action.types';
 import { CheckoutHandler } from '../../handlers/checkout.handler';
 
 export class InteractiveCheckoutHandler {
-  private checkoutHandler = new CheckoutHandler();
+  private get checkoutHandler(): any {
+    const { CheckoutHandler } = require('../../handlers/checkout.handler');
+    return new CheckoutHandler();
+  }
 
   public async execute(restaurantId: string, customerPhone: string): Promise<InteractiveScreen> {
     const textResult = await this.checkoutHandler.handle(restaurantId, customerPhone);
