@@ -633,14 +633,14 @@ export default function PaymentsPage() {
   };
 
   return (
-    <div className="min-h-full bg-[#09090B] text-slate-100 font-sans">
+    <div className="min-h-full bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8">
 
         {/* ── Page Header ── */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-100 tracking-tight">Payments</h1>
-            <p className="text-sm text-slate-500 mt-0.5">Verify and manage Manual UPI payments from customers.</p>
+            <h1 className="font-heading text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">Payments & Verification</h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Verify and manage Manual UPI payments and automated gateway settlements.</p>
           </div>
           <button
             onClick={fetchPayments}

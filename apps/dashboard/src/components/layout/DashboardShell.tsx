@@ -10,6 +10,7 @@ import { useToast } from "../ui/ToastContainer";
 import {
   LayoutDashboard,
   ShoppingBag,
+  History,
   Utensils,
   Users,
   BarChart3,
@@ -76,8 +77,9 @@ export default function DashboardShell({ children }: DashboardShellProps) {
   }, []);
 
   const navItems = [
-    { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { label: "Overview Hub", href: "/dashboard", icon: LayoutDashboard },
     { label: "Live Orders", href: "/dashboard/orders", icon: ShoppingBag, badge: "LIVE" },
+    { label: "Order History", href: "/dashboard/orders/history", icon: History },
     { label: "Menu Catalog", href: "/dashboard/menu", icon: Utensils },
     { label: "Payments", href: "/dashboard/payments", icon: CreditCard },
     { label: "Customers", href: "/dashboard/customers", icon: Users },
@@ -87,9 +89,9 @@ export default function DashboardShell({ children }: DashboardShellProps) {
   ];
 
   const mobileBottomNavItems = [
-    { label: "Orders", href: "/dashboard/orders", icon: ShoppingBag },
+    { label: "Live KOT", href: "/dashboard/orders", icon: ShoppingBag },
+    { label: "History", href: "/dashboard/orders/history", icon: History },
     { label: "Menu", href: "/dashboard/menu", icon: Utensils },
-    { label: "WhatsApp", href: "/dashboard/whatsapp", icon: MessageSquare },
     { label: "More", href: "/dashboard/settings", icon: Settings },
   ];
 

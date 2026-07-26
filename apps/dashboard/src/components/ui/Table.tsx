@@ -50,8 +50,8 @@ export function TableHead({ children, className, ...props }: React.ThHTMLAttribu
 
 export function TableCell({ children, className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
   return (
-    <div className={cn("px-4 py-4 whitespace-nowrap", className)} {...props}>
+    <td className={cn("px-4 py-4 whitespace-nowrap", className)} {...props}>
       {children}
-    </div>
+    </td>
   );
 }

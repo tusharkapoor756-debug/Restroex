@@ -1,20 +1,34 @@
-import { DailyAnalytics } from "../../types";
+import { api } from "../api";
+
+export interface RealDailyAnalytics {
+  period: string;
+  totalRevenue: number;
+  totalOrdersCount: number;
+  avgOrderValue: number;
+  activeConversationsCount: number;
+  topSellingItems: Array<{ name: string; quantity: number; revenue: number }>;
+  hourlyOrders: Record<number, number>;
+  paymentBreakdown: Record<string, number>;
+}
 
 export class AnalyticsService {
   /**
-   * Placeholder: Retrieves daily analytics overview.
-   * NOTE: Backend endpoint does not exist yet.
+   * Retrieves real daily analytics overview from backend DB calculations.
    */
-  static async getDailyOverview(): Promise<DailyAnalytics> {
-    // throw new Error("Not implemented: Endpoint /analytics/daily does not exist.");
-    
-    // Returning dummy typed data for now so UI doesn't break
-    return {
+  static async getDailyOverview(period: "7d" | "30d" | "90d" = "7d"): Promise<RealDailyAnalytics> {
+    const res = await api.get<any>(`/analytics/daily?period=${period}`);
+    if (res && typeof res === "object" && "totalRevenue" in res) {
+      return res as RealDailyAnalytics;
+    }
+    return res?.data || {
+      period,
       totalRevenue: 0,
-      totalOrders: 0,
-      avgPrepTimeMinutes: 0,
-      whatsappMessageCount: 0,
-      aiHitRate: 0,
+      totalOrdersCount: 0,
+      avgOrderValue: 0,
+      activeConversationsCount: 0,
+      topSellingItems: [],
+      hourlyOrders: {},
+      paymentBreakdown: {},
     };
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { OrdersService } from "../../../lib/services/orders.service";
 import { PaymentsService } from "../../../lib/services/payments.service";
 import { Order as BackendOrder, WorkflowOrderStatus, Payment } from "../../../types";
@@ -73,26 +73,69 @@ export default function KanbanLiveOrdersPage() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [newOrderPulseId, setNewOrderPulseId] = useState<string | null>(null);
   const previousOrdersRef = useRef<string[]>([]);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
-  // Initialize Web Audio chime sound
-  const playAlertChime = () => {
-    if (!soundEnabled) return;
+  // Initialize & unlock Web Audio API on first user gesture (fix autoplay browser policy)
+  useEffect(() => {
+    const unlockAudio = () => {
+      try {
+        if (!audioContextRef.current) {
+          audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        }
+        if (audioContextRef.current.state === "suspended") {
+          audioContextRef.current.resume();
+        }
+        console.log("[Restroex Audio] AudioContext unlocked successfully via user gesture.");
+      } catch (err) {
+        console.warn("[Restroex Audio] Could not unlock AudioContext:", err);
+      }
+    };
+
+    window.addEventListener("click", unlockAudio, { once: true });
+    window.addEventListener("touchstart", unlockAudio, { once: true });
+    return () => {
+      window.removeEventListener("click", unlockAudio);
+      window.removeEventListener("touchstart", unlockAudio);
+    };
+  }, []);
+
+  // Web Audio chime sound
+  const playAlertChime = useCallback(() => {
+    if (!soundEnabled) {
+      console.log("[Restroex Audio] Alert chime suppressed (sound is OFF)");
+      return;
+    }
     try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const ctx = audioContextRef.current || new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (ctx.state === "suspended") {
+        ctx.resume();
+      }
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = "sine";
-      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15); // A5
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5 chime
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15); // A5 chime
+      gain.gain.setValueAtTime(0.4, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start();
       osc.stop(ctx.currentTime + 0.5);
+      console.log("[Restroex Audio] New Order Chime Played Successfully!");
     } catch (e) {
-      console.warn("Audio chime playback error:", e);
+      console.warn("[Restroex Audio] Audio chime playback error:", e);
+    }
+  }, [soundEnabled]);
+
+  const toggleSound = () => {
+    const nextState = !soundEnabled;
+    setSoundEnabled(nextState);
+    if (nextState) {
+      // Play test beep immediately to confirm audio subsystem is working
+      playAlertChime();
+      toast.info("Sound Alert Enabled", "Test chime played. New orders will play sound.");
+    } else {
+      toast.warning("Sound Muted", "Audio chime turned off.");
     }
   };
 
@@ -354,14 +397,11 @@ export default function KanbanLiveOrdersPage() {
               <Button
                 variant={soundEnabled ? "secondary" : "ghost"}
                 size="sm"
-                onClick={() => {
-                  setSoundEnabled(!soundEnabled);
-                  toast.info(soundEnabled ? "Audio Alert Muted" : "Audio Chime Enabled");
-                }}
-                className="gap-2"
+                onClick={toggleSound}
+                className="gap-2 font-semibold text-xs"
               >
-                {soundEnabled ? <Volume2 className="h-4 w-4 text-brand-600" /> : <VolumeX className="h-4 w-4 text-slate-400" />}
-                <span className="text-xs">{soundEnabled ? "Sound ON" : "Sound Muted"}</span>
+                {soundEnabled ? <Volume2 className="h-4 w-4 text-emerald-500" /> : <VolumeX className="h-4 w-4 text-slate-400" />}
+                <span>{soundEnabled ? "Sound ON" : "Sound OFF"}</span>
               </Button>
 
               <Button

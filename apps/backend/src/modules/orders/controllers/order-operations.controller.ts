@@ -24,6 +24,36 @@ export class OrderOperationsController {
     });
   };
 
+  public getOrderHistory = async (req: Request, res: Response): Promise<void> => {
+    const restaurantId = this.getRestaurantId(req);
+    const page = req.query.page ? parseInt(String(req.query.page), 10) : 1;
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 20;
+    const search = req.query.search ? String(req.query.search) : undefined;
+    const status = req.query.status ? String(req.query.status) : undefined;
+    const startDate = req.query.startDate ? String(req.query.startDate) : undefined;
+    const endDate = req.query.endDate ? String(req.query.endDate) : undefined;
+
+    const result = await this.orders.findOrderHistory(restaurantId, {
+      page,
+      limit,
+      search,
+      status,
+      startDate,
+      endDate,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: result.orders,
+      pagination: {
+        total: result.totalCount,
+        page,
+        limit,
+        totalPages: Math.ceil(result.totalCount / limit),
+      },
+    });
+  };
+
   public transitionOrder = async (req: Request, res: Response): Promise<void> => {
     const orderId = String(req.params.orderId || '');
     const restaurantId = this.getRestaurantId(req);

@@ -1,37 +1,27 @@
-// src/app/dashboard/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   TrendingUp,
   ShoppingBag,
   Clock,
   MessageSquare,
   DollarSign,
-  AlertTriangle,
   Play,
   CheckCircle,
-  ChevronRight,
   Sparkles,
   Printer,
-  Search,
-  BellRing
+  RefreshCw,
+  AlertCircle
 } from "lucide-react";
 import { OrdersService } from "../../lib/services/orders.service";
+import { AnalyticsService, RealDailyAnalytics } from "../../lib/services/analytics.service";
 import { Order as BackendOrder, WorkflowOrderStatus } from "../../types";
-
-interface UiOrder {
-  id: string;
-  backendId: string;
-  source: "whatsapp" | "table";
-  tableNo?: string;
-  customerPhone?: string;
-  items: { name: string; quantity: number }[];
-  total: number;
-  status: WorkflowOrderStatus | "checkout_pending" | "paid" | "cart_active" | "payment_pending" | "refunded";
-  time: string;
-  timestamp: Date;
-}
+import Card from "../../components/ui/Card";
+import Badge from "../../components/ui/Badge";
+import Button from "../../components/ui/Button";
+import { CardSkeleton } from "../../components/ui/Skeleton";
+import { EmptyState, ErrorState } from "../../components/ui/StateViews";
 
 interface Activity {
   id: number;
@@ -41,343 +31,337 @@ interface Activity {
 }
 
 export default function DashboardPage() {
-  const [orders, setOrders] = useState<UiOrder[]>([]);
+  const [orders, setOrders] = useState<BackendOrder[]>([]);
+  const [analytics, setAnalytics] = useState<RealDailyAnalytics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isError, setIsError] = useState(false);
 
-  const [activities, setActivities] = useState<Activity[]>([
-    { id: 1, message: "AI Engine matched WhatsApp order request to #484.", time: "2 min ago", type: "ai" },
-    { id: 2, message: "KOT printed successfully for Table 5.", time: "8 min ago", type: "system" },
-    { id: 3, message: "Payment of ₹820 settled for Table 8.", time: "18 min ago", type: "payment" },
-    { id: 4, message: "Low stock alert: Fresh Mint Leaves (< 0.5 kg).", time: "30 min ago", type: "alert" }
-  ]);
+  const [activities, setActivities] = useState<Activity[]>([]);
 
-  const fetchOrders = async () => {
+  const fetchDashboardData = useCallback(async () => {
+    setIsLoading(true);
+    setIsError(false);
     try {
-      const data = await OrdersService.getActiveOrders();
-      const mapped: UiOrder[] = data.map((o) => ({
-        id: o.humanReadableId || o.id.substring(0, 8),
-        backendId: o.id,
-        source: "whatsapp", // default to whatsapp for now
-        customerPhone: o.customerPhone,
-        items: o.items?.map(i => ({ name: i.itemNameSnapshot, quantity: i.quantity })) || [],
-        total: o.totalAmount,
-        status: o.status,
-        time: new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        timestamp: new Date(o.createdAt)
-      }));
-      setOrders(mapped);
-    } catch (error) {
-      console.error("Failed to load orders:", error);
+      const [activeOrders, dailyAnalytics] = await Promise.all([
+        OrdersService.getActiveOrders().catch(() => []),
+        AnalyticsService.getDailyOverview("7d").catch(() => null),
+      ]);
+
+      setOrders(activeOrders);
+      setAnalytics(dailyAnalytics);
+    } catch (err) {
+      console.error("Failed to load dashboard data:", err);
+      setIsError(true);
     } finally {
       setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchOrders();
-    // Poll every 30 seconds
-    const interval = setInterval(fetchOrders, 30000);
-    return () => clearInterval(interval);
   }, []);
 
-  // Update order status
+  useEffect(() => {
+    fetchDashboardData();
+    const interval = setInterval(fetchDashboardData, 15000);
+    return () => clearInterval(interval);
+  }, [fetchDashboardData]);
+
   const handleUpdateStatus = async (backendId: string, id: string, nextStatus: WorkflowOrderStatus) => {
     try {
-      // Optimistic update
       setOrders((prev) =>
-        prev.map((order) => {
-          if (order.backendId === backendId) {
-            return { ...order, status: nextStatus };
-          }
-          return order;
-        })
+        prev.map((order) => (order.id === backendId ? { ...order, status: nextStatus } : order))
       );
 
       await OrdersService.transitionOrder(backendId, nextStatus);
 
       const statusMap = {
-        accepted: "accepted ticket.",
-        preparing: "moved to cooking queue.",
-        ready: "marked ready for dispatch.",
-        completed: "marked as served/delivered.",
-        cancelled: "cancelled."
+        accepted: "accepted order ticket.",
+        preparing: "moved order to cooking queue.",
+        ready: "marked order ready for dispatch.",
+        completed: "completed order ticket.",
+        cancelled: "cancelled order.",
       };
+
       const newAct: Activity = {
         id: Date.now(),
-        message: `Order ${id} ${statusMap[nextStatus as keyof typeof statusMap] || 'updated.'}`,
+        message: `Order #${id} ${statusMap[nextStatus as keyof typeof statusMap] || "updated."}`,
         time: "Just now",
-        type: "system"
+        type: "system",
       };
-      setActivities(prev => [newAct, ...prev]);
+      setActivities((prev) => [newAct, ...prev]);
     } catch (error) {
-      console.error("Failed to update status", error);
-      // Revert optimism on error
-      fetchOrders();
+      console.error("Failed to update order status", error);
+      fetchDashboardData();
     }
   };
 
-  // Status Badge Helper
-  const renderStatus = (status: UiOrder["status"]) => {
-    if (status === "paid" || status === "accepted" || status === "checkout_pending" || status === "cart_active" || status === "payment_pending") {
-      return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-950 text-violet-300 border border-violet-800 animate-pulse">New Ticket</span>;
-    }
-    switch (status) {
-      case "preparing":
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800">Preparing</span>;
-      case "ready":
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">Ready</span>;
-      case "completed":
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-900 text-slate-400 border border-slate-800">Completed</span>;
-      default:
-        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-900 text-slate-400 border border-slate-800">{status}</span>;
-    }
-  };
+  const activeTicketsCount = orders.filter((o) => o.status !== "completed" && o.status !== "cancelled").length;
 
   return (
     <div className="space-y-8">
-      {/* Welcome banner */}
+      {/* Welcome Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold font-sora text-white">Operations Hub</h1>
-          <p className="text-slate-400 text-sm mt-1">Live restaurant monitoring and order processing center.</p>
+          <h1 className="font-heading text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100">
+            Restaurant Operations Hub
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            Real-time live ticket dispatch, active kitchen queue, and daily metrics.
+          </p>
         </div>
 
-        <div className="flex items-center gap-2 bg-slate-900/40 border border-[#23242B] rounded-xl px-3.5 py-1.5 text-xs text-slate-300">
-          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-          Live Channel Active
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={fetchDashboardData} className="gap-2 font-semibold">
+            <RefreshCw className="h-4 w-4" />
+            <span>Refresh Hub</span>
+          </Button>
+
+          <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 rounded-xl px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Live Sync Active</span>
+          </div>
         </div>
       </div>
 
-      {/* METRICS ROW */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Metric 1 */}
-        <div className="bg-[#0e0f14]/80 border border-[#23242B] rounded-2xl p-5 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-3 text-slate-700">
-            <DollarSign className="h-10 w-10 opacity-10" />
-          </div>
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Today's Revenue</span>
-          <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-2xl font-bold font-sora text-white">₹38,240</span>
-            <span className="text-xs font-semibold text-emerald-400 flex items-center">
-              <TrendingUp className="h-3 w-3 mr-0.5" />
-              +14.2%
-            </span>
-          </div>
-          <span className="text-[10px] text-slate-500 block mt-1">vs. last Sunday</span>
+      {/* REAL METRICS ROW */}
+      {isLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <CardSkeleton key={i} />
+          ))}
         </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="space-y-2 relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Today's Revenue</span>
+              <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
+                <DollarSign className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="flex items-baseline gap-2 pt-1">
+              <span className="font-heading text-2xl font-extrabold text-slate-900 dark:text-slate-100">
+                ₹{analytics?.totalRevenue || 0}
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-400 block">Total paid sales</span>
+          </Card>
 
-        {/* Metric 2 */}
-        <div className="bg-[#0e0f14]/80 border border-[#23242B] rounded-2xl p-5 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-3 text-slate-700">
-            <ShoppingBag className="h-10 w-10 opacity-10" />
-          </div>
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Active Orders</span>
-          <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-2xl font-bold font-sora text-white">
-              {orders.filter(o => o.status !== "completed" && o.status !== "cancelled").length}
-            </span>
-            <span className="text-xs font-semibold text-violet-400">Tickets active</span>
-          </div>
-          <span className="text-[10px] text-slate-500 block mt-1">4 preparing, 1 pending</span>
-        </div>
+          <Card className="space-y-2 relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Active Orders</span>
+              <div className="p-2 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400">
+                <ShoppingBag className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="flex items-baseline gap-2 pt-1">
+              <span className="font-heading text-2xl font-extrabold text-slate-900 dark:text-slate-100">
+                {activeTicketsCount}
+              </span>
+              <span className="text-xs font-semibold text-brand-600 dark:text-brand-400">Tickets active</span>
+            </div>
+            <span className="text-[11px] text-slate-400 block">Kitchen & preparing orders</span>
+          </Card>
 
-        {/* Metric 3 */}
-        <div className="bg-[#0e0f14]/80 border border-[#23242B] rounded-2xl p-5 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-3 text-slate-700">
-            <Clock className="h-10 w-10 opacity-10" />
-          </div>
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Avg. Preparation Time</span>
-          <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-2xl font-bold font-sora text-white">14.8m</span>
-            <span className="text-xs font-semibold text-emerald-400">-1.2m</span>
-          </div>
-          <span className="text-[10px] text-slate-500 block mt-1">Target is 15 minutes</span>
-        </div>
+          <Card className="space-y-2 relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Avg Order Value</span>
+              <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400">
+                <Clock className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="flex items-baseline gap-2 pt-1">
+              <span className="font-heading text-2xl font-extrabold text-slate-900 dark:text-slate-100">
+                ₹{analytics?.avgOrderValue || 0}
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-400 block">Average bill amount</span>
+          </Card>
 
-        {/* Metric 4 */}
-        <div className="bg-[#0e0f14]/80 border border-[#23242B] rounded-2xl p-5 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-3 text-slate-700">
-            <MessageSquare className="h-10 w-10 opacity-10" />
-          </div>
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">WhatsApp Messages</span>
-          <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-2xl font-bold font-sora text-white">184</span>
-            <span className="text-xs font-semibold text-violet-400">92% AI Hit</span>
-          </div>
-          <span className="text-[10px] text-slate-500 block mt-1">0 manual interventions</span>
+          <Card className="space-y-2 relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">WhatsApp Conversations</span>
+              <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                <MessageSquare className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="flex items-baseline gap-2 pt-1">
+              <span className="font-heading text-2xl font-extrabold text-slate-900 dark:text-slate-100">
+                {analytics?.activeConversationsCount || 0}
+              </span>
+            </div>
+              <span className="text-[11px] text-slate-400 block">Automated WhatsApp sessions</span>
+          </Card>
         </div>
-      </div>
+      )}
 
       {/* CORE WORKSPACE GRID */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         
-        {/* Left Side: Live Order Queue List */}
+        {/* Left Side: Live Order Dispatch List */}
         <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between border-b border-[#23242B]/40 pb-2">
+          <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-2">
             <div className="flex items-center gap-2">
-              <ShoppingBag className="h-4.5 w-4.5 text-violet-400" />
-              <h2 className="text-base font-bold font-sora text-white">Live Orders Dispatch</h2>
+              <ShoppingBag className="h-5 w-5 text-brand-600 dark:text-brand-400" />
+              <h2 className="font-heading text-base font-bold text-slate-900 dark:text-slate-100">Live Orders Dispatch</h2>
             </div>
-            <span className="text-xs text-slate-500">{orders.length} orders total</span>
+            <span className="text-xs font-semibold text-slate-500">{orders.length} orders total</span>
           </div>
 
-          <div className="space-y-3.5">
-            {orders.map((order) => (
-              <div
-                key={order.id}
-                className="bg-[#0e0f14]/70 border border-[#23242B] rounded-2xl p-5 space-y-4 relative hover:border-slate-800 transition-all"
-              >
-                {/* Header of Order Card */}
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-white">{order.id}</span>
-                      <span className="text-xs text-slate-500">•</span>
-                      <span className="text-xs text-slate-400 font-medium">
-                        {order.source === "table" ? order.tableNo : order.customerPhone}
-                      </span>
-                      {order.source === "whatsapp" && (
-                        <span className="px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 text-[8px] font-bold uppercase tracking-wider border border-emerald-900/60">
-                          WhatsApp
+          {orders.length === 0 ? (
+            <EmptyState
+              icon={<ShoppingBag className="h-8 w-8 text-brand-600" />}
+              title="No Active Orders"
+              description="New WhatsApp orders will appear here in real-time."
+              actionLabel="Refresh Data"
+              onAction={fetchDashboardData}
+            />
+          ) : (
+            <div className="space-y-4">
+              {orders.map((order) => {
+                const orderId = order.humanReadableId || order.id.substring(0, 8);
+
+                return (
+                  <Card key={order.id} className="space-y-4 p-5">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-extrabold text-base text-brand-600 dark:text-brand-400">{orderId}</span>
+                          <span className="text-xs text-slate-400">•</span>
+                          <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            {order.customerPhone || "Walk-in Customer"}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-slate-500 block mt-0.5">
+                          {new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                         </span>
-                      )}
-                    </div>
-                    <span className="text-[10px] text-slate-500 block">{order.time}</span>
-                  </div>
-                  {renderStatus(order.status)}
-                </div>
+                      </div>
 
-                {/* Items and quantities */}
-                <div className="space-y-2 border-t border-[#23242B]/30 pt-3">
-                  {order.items.map((item, idx) => (
-                    <div key={idx} className="flex justify-between items-center text-xs">
-                      <span className="text-slate-300 font-medium">
-                        <span className="text-slate-500 text-xs font-semibold mr-1.5">{item.quantity}x</span>
-                        {item.name}
+                      <Badge
+                        variant={
+                          order.status === "completed"
+                            ? "success"
+                            : order.status === "preparing"
+                            ? "warning"
+                            : "info"
+                        }
+                      >
+                        {order.status.toUpperCase()}
+                      </Badge>
+                    </div>
+
+                    {/* Order Items */}
+                    <div className="space-y-1.5 border-t border-slate-100 dark:border-slate-800 pt-3 text-xs">
+                      {order.items?.map((item: any, idx: number) => (
+                        <div key={idx} className="flex justify-between items-center">
+                          <span className="text-slate-700 dark:text-slate-300 font-semibold">
+                            <span className="text-slate-400 font-bold mr-1.5">{item.quantity}x</span>
+                            {item.itemNameSnapshot || item.variantName}
+                          </span>
+                          <span className="font-mono text-slate-500">₹{item.totalPrice}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Footer Actions */}
+                    <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3.5 text-xs">
+                      <span className="font-heading font-extrabold text-base text-slate-900 dark:text-slate-100">
+                        Total: ₹{order.totalAmount}
                       </span>
+
+                      <div className="flex items-center gap-2">
+                        {order.status === "accepted" && (
+                          <Button
+                            size="sm"
+                            variant="warning"
+                            onClick={() => handleUpdateStatus(order.id, orderId, "preparing")}
+                            className="gap-1 font-bold"
+                          >
+                            <Play className="h-3.5 w-3.5" />
+                            <span>Accept & Cook</span>
+                          </Button>
+                        )}
+
+                        {order.status === "preparing" && (
+                          <Button
+                            size="sm"
+                            variant="success"
+                            onClick={() => handleUpdateStatus(order.id, orderId, "ready")}
+                            className="gap-1 font-bold"
+                          >
+                            <CheckCircle className="h-3.5 w-3.5" />
+                            <span>Mark Ready</span>
+                          </Button>
+                        )}
+
+                        {order.status === "ready" && (
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            onClick={() => handleUpdateStatus(order.id, orderId, "completed")}
+                            className="gap-1 font-bold"
+                          >
+                            <CheckCircle className="h-3.5 w-3.5" />
+                            <span>Mark Served</span>
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                  ))}
-                </div>
-
-                {/* Footer of Order Card */}
-                <div className="flex items-center justify-between border-t border-[#23242B]/30 pt-3.5">
-                  <div className="text-xs text-slate-400">
-                    Total: <span className="font-bold text-slate-200">₹{order.total}</span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button className="p-1.5 rounded-lg border border-[#23242B] text-slate-400 hover:text-white hover:bg-slate-900 transition-colors" title="Print KOT">
-                      <Printer className="h-4.5 w-4.5" />
-                    </button>
-                    
-                    {/* "pending" maps to paid or accepted in backend terms */}
-                    {(order.status === "paid" || order.status === "accepted") && (
-                      <button
-                        onClick={() => handleUpdateStatus(order.backendId, order.id, "preparing")}
-                        className="flex items-center gap-1 bg-violet-600 hover:bg-violet-500 text-white rounded-lg px-3 py-1.5 text-xs font-semibold"
-                      >
-                        <Play className="h-3 w-3 fill-white" />
-                        Accept & Cook
-                      </button>
-                    )}
-
-                    {order.status === "preparing" && (
-                      <button
-                        onClick={() => handleUpdateStatus(order.backendId, order.id, "ready")}
-                        className="flex items-center gap-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg px-3 py-1.5 text-xs font-semibold"
-                      >
-                        <CheckCircle className="h-3 w-3" />
-                        Mark Ready
-                      </button>
-                    )}
-
-                    {order.status === "ready" && (
-                      <button
-                        onClick={() => handleUpdateStatus(order.backendId, order.id, "completed")}
-                        className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg px-3 py-1.5 text-xs font-semibold"
-                      >
-                        <CheckCircle className="h-3 w-3" />
-                        Mark Served
-                      </button>
-                    )}
-
-                    {order.status === "completed" && (
-                      <span className="text-xs text-slate-500 font-semibold px-2 py-1">Settled & Completed</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {/* Right Side: Kitchen Queue & Recent Activity Log */}
+        {/* Right Side: Kitchen Queue & Recent Activity */}
         <div className="space-y-6">
-          {/* Section 1: Kitchen Queue */}
           <div className="space-y-4">
-            <div className="flex items-center gap-2 border-b border-[#23242B]/40 pb-2">
+            <div className="flex items-center gap-2 border-b border-slate-200/80 dark:border-slate-800 pb-2">
               <Clock className="h-4.5 w-4.5 text-amber-500" />
-              <h2 className="text-base font-bold font-sora text-white">Active Kitchen Queue</h2>
+              <h2 className="font-heading text-base font-bold text-slate-900 dark:text-slate-100">Active Kitchen Queue</h2>
             </div>
-            
-            <div className="bg-[#0e0f14]/60 border border-[#23242B] rounded-2xl p-4 divide-y divide-[#23242B]/40">
-              {orders.filter(o => o.status === "preparing").length === 0 ? (
+
+            <Card className="p-4 space-y-3">
+              {orders.filter((o) => o.status === "preparing").length === 0 ? (
                 <div className="text-center py-6 text-xs text-slate-500">
-                  No items in preparation. Click "Accept & Cook" on pending orders.
+                  No tickets in preparation queue.
                 </div>
               ) : (
                 orders
-                  .filter(o => o.status === "preparing")
+                  .filter((o) => o.status === "preparing")
                   .map((order) => (
-                    <div key={order.id} className="py-2.5 first:pt-0 last:pb-0 text-xs">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="font-bold text-slate-200">{order.id} ({order.tableNo || "WhatsApp"})</span>
-                        <span className="text-[10px] text-slate-500">In cooking</span>
+                    <div key={order.id} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 text-xs space-y-1">
+                      <div className="flex items-center justify-between font-bold text-slate-900 dark:text-slate-100">
+                        <span>{order.humanReadableId || order.id}</span>
+                        <Badge variant="warning" size="sm">In Cooking</Badge>
                       </div>
-                      <div className="space-y-0.5">
-                        {order.items.map((i, idx) => (
-                          <div key={idx} className="text-slate-400 font-medium">
-                            {i.quantity}x {i.name}
-                          </div>
-                        ))}
+                      <div className="text-slate-500 text-[11px]">
+                        {order.items?.map((i: any) => `${i.quantity}x ${i.itemNameSnapshot}`).join(", ")}
                       </div>
                     </div>
                   ))
               )}
-            </div>
+            </Card>
           </div>
 
-          {/* Section 2: Recent Activity log */}
           <div className="space-y-4">
-            <div className="flex items-center gap-2 border-b border-[#23242B]/40 pb-2">
-              <Sparkles className="h-4.5 w-4.5 text-violet-400" />
-              <h2 className="text-base font-bold font-sora text-white">Automated AI Logs</h2>
+            <div className="flex items-center gap-2 border-b border-slate-200/80 dark:border-slate-800 pb-2">
+              <Sparkles className="h-4.5 w-4.5 text-brand-600 dark:text-brand-400" />
+              <h2 className="font-heading text-base font-bold text-slate-900 dark:text-slate-100">Recent Action Logs</h2>
             </div>
 
-            <div className="space-y-2.5">
-              {activities.map((act) => (
-                <div
-                  key={act.id}
-                  className="bg-[#0e0f14]/40 border border-[#23242B]/30 rounded-xl p-3.5 text-xs flex items-start gap-2.5"
-                >
-                  <div
-                    className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${
-                      act.type === "ai"
-                        ? "bg-violet-400"
-                        : act.type === "payment"
-                        ? "bg-emerald-400"
-                        : act.type === "alert"
-                        ? "bg-red-400 animate-pulse"
-                        : "bg-slate-400"
-                    }`}
-                  />
-                  <div className="space-y-1">
-                    <p className="text-slate-300 font-medium leading-relaxed">{act.message}</p>
-                    <span className="text-[10px] text-slate-500 block">{act.time}</span>
+            {activities.length === 0 ? (
+              <Card className="p-6 text-center text-xs text-slate-500">
+                No recent ticket state transitions logged yet.
+              </Card>
+            ) : (
+              <div className="space-y-2.5">
+                {activities.map((act) => (
+                  <div key={act.id} className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 text-xs space-y-1">
+                    <p className="font-semibold text-slate-900 dark:text-slate-100">{act.message}</p>
+                    <span className="text-[10px] text-slate-400 block">{act.time}</span>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -104,6 +104,59 @@ export class OrderRepository {
     return (data || []).map((row: any) => this.mapToDomain(row));
   }
 
+  public async findOrderHistory(
+    restaurantId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      status?: string;
+      paymentProvider?: string;
+      startDate?: string;
+      endDate?: string;
+    }
+  ): Promise<{ orders: Order[]; totalCount: number }> {
+    const page = options.page && options.page > 0 ? options.page : 1;
+    const limit = options.limit && options.limit > 0 ? options.limit : 20;
+    const offset = (page - 1) * limit;
+
+    let query = this.client
+      .from('orders')
+      .select('*, items:order_items(*), customer:customers(*), payments(*)', { count: 'exact' })
+      .eq('restaurant_id', restaurantId);
+
+    if (options.status && options.status !== 'all') {
+      query = query.eq('status', options.status);
+    }
+
+    if (options.startDate) {
+      query = query.gte('created_at', options.startDate);
+    }
+
+    if (options.endDate) {
+      query = query.lte('created_at', options.endDate);
+    }
+
+    if (options.search && options.search.trim() !== '') {
+      const term = options.search.trim();
+      query = query.or(`human_readable_id.ilike.%${term}%,customer_phone.ilike.%${term}%`);
+    }
+
+    query = query.order('created_at', { ascending: false }).range(offset, offset + limit - 1);
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      throw new Error(`Failed to fetch order history: ${error.message}`);
+    }
+
+    const orders = (data || []).map((row: any) => this.mapToDomain(row));
+    return {
+      orders,
+      totalCount: count || 0,
+    };
+  }
+
   /**
    * Inserts an order and its associated item snapshots atomically.
    */
