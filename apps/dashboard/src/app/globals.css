@@ -2,181 +2,97 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 224 71% 4%;
 
-/* Design System Variables */
-:root {
-  /* Color palette (HSL) */
-  --color-primary: 225 15% 45%;
-  --color-primary-foreground: 0 0% 100%;
-  --color-success: 159 61% 45%;
-  --color-success-foreground: 0 0% 0%;
-  --color-warning: 45 100% 50%;
-  --color-warning-foreground: 0 0% 0%;
-  --color-neutral-50: 210 10% 95%;
-  --color-neutral-100: 210 10% 90%;
-  --color-neutral-200: 210 10% 80%;
-  --color-neutral-300: 210 10% 70%;
-  --color-neutral-400: 210 10% 60%;
-  --color-neutral-500: 210 10% 50%;
-  --color-neutral-600: 210 10% 40%;
-  --color-neutral-700: 210 10% 30%;
-  --color-neutral-800: 210 10% 20%;
-  --color-neutral-900: 210 10% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 71% 4%;
 
-  /* Font families */
-  --font-sora: 'Sora', sans-serif;
-  --font-inter: 'Inter', sans-serif;
-  --font-mono: 'Geist Mono', monospace;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 71% 4%;
 
-  /* Glass variant backgrounds */
-  --glass-light-bg: rgba(255, 255, 255, 0.2);
-  --glass-medium-bg: rgba(255, 255, 255, 0.4);
-  --glass-heavy-bg: rgba(255, 255, 255, 0.6);
-  --glass-navbar-bg: rgba(255, 255, 255, 0.3);
-  --glass-card-bg: rgba(255, 255, 255, 0.25);
-  --glass-ai-bg: rgba(255, 255, 255, 0.35);
+    --primary: 239 84% 60%;
+    --primary-foreground: 0 0% 100%;
 
-  /* Additional UI variables */
-  --bg: #eef1f4;
-  --surface: #ffffff;
-  --ink: #131820;
-  --muted: #5e6875;
-  --line: #cfd6dd;
-  --paid: #176b87;
-  --accepted: #1f7a4d;
-  --preparing: #8a5b12;
-  --ready: #3c5aa6;
-  --danger: #b42318;
-  --urgent: #f8d7da;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 220 9% 15%;
 
-  /* Color scheme */
-  color-scheme: light;
-}
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
 
-/* Dark theme */
-[data-theme='dark'] {
-  --color-primary: 225 15% 55%;
-  --color-primary-foreground: 0 0% 0%;
-  --color-success: 159 61% 55%;
-  --color-success-foreground: 0 0% 0%;
-  --color-warning: 45 100% 60%;
-  --color-warning-foreground: 0 0% 0%;
-  --color-neutral-50: 210 10% 10%;
-  --color-neutral-100: 210 10% 15%;
-  --color-neutral-200: 210 10% 20%;
-  --color-neutral-300: 210 10% 30%;
-  --color-neutral-400: 210 10% 40%;
-  --color-neutral-500: 210 10% 50%;
-  --color-neutral-600: 210 10% 60%;
-  --color-neutral-700: 210 10% 70%;
-  --color-neutral-800: 210 10% 80%;
-  --color-neutral-900: 210 10% 90%;
-}
+    --accent: 220 14% 94%;
+    --accent-foreground: 220 9% 15%;
 
-/* Global Reset and Base Styles */
-html {
-  font-family: var(--font-inter);
-  color: hsl(var(--color-neutral-900));
-  background-color: hsl(var(--color-neutral-50));
-}
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: var(--font-sora);
-  margin: 0;
-}
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 239 84% 60%;
 
-code,
-pre {
-  font-family: var(--font-mono);
-}
+    --radius: 0.75rem;
 
-/* Box sizing */
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
-html,
-body {
-  margin: 0;
-  min-height: 100%;
-  scroll-behavior: smooth;
-}
-
-body {
-  font-family: var(--font-inter);
-  background: hsl(var(--color-neutral-50));
-  color: hsl(var(--color-neutral-900));
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-}
-
-/* Glass utilities */
-@layer utilities {
-  .glass-light {
-    background: var(--glass-light-bg);
-    backdrop-filter: blur(4px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 0.75rem;
+    --font-inter: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-sora: 'Sora', system-ui, sans-serif;
+    --font-mono: 'Geist Mono', monospace;
   }
 
-  .glass-medium {
-    background: var(--glass-medium-bg);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 0.75rem;
-  }
+  .dark {
+    --background: 224 71% 4%;
+    --foreground: 210 20% 98%;
 
-  .glass-heavy {
-    background: var(--glass-heavy-bg);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 0.75rem;
-  }
+    --card: 224 71% 7%;
+    --card-foreground: 210 20% 98%;
 
-  .glass-navbar {
-    background: var(--glass-navbar-bg);
-    backdrop-filter: blur(4px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.25);
-  }
+    --popover: 224 71% 7%;
+    --popover-foreground: 210 20% 98%;
 
-  .glass-card {
-    background: var(--glass-card-bg);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 0.5rem;
-  }
+    --primary: 239 84% 67%;
+    --primary-foreground: 0 0% 100%;
 
-  .glass-ai {
-    background: var(--glass-ai-bg);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(99, 102, 241, 0.2);
+    --secondary: 215 27.9% 16.9%;
+    --secondary-foreground: 210 20% 98%;
+
+    --muted: 215 27.9% 16.9%;
+    --muted-foreground: 217.9 10.6% 64.9%;
+
+    --accent: 215 27.9% 16.9%;
+    --accent-foreground: 210 20% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 20% 98%;
+
+    --border: 215 27.9% 16.9%;
+    --input: 215 27.9% 16.9%;
+    --ring: 239 84% 67%;
   }
 }
 
-/* Shared Animations */
-@keyframes light-pulse {
-
-  0%,
-  100% {
-    box-shadow: 0 0 0 3px rgba(17, 122, 101, 0.18),
-      0 2px 8px rgba(19, 24, 32, 0.08);
+@layer base {
+  * {
+    @apply border-border;
   }
-
-  50% {
-    box-shadow: 0 0 0 6px rgba(17, 122, 101, 0.24),
-      0 2px 8px rgba(19, 24, 32, 0.08);
+  body {
+    @apply bg-background text-foreground font-sans antialiased selection:bg-brand-500 selection:text-white;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading tracking-tight;
   }
 }
 
-::selection {
-  background: hsl(var(--color-primary));
-  color: white;
+/* Custom Scrollbar for Restaurant Daily Tool Ergonomics */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 dark:bg-slate-700 rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400 dark:bg-slate-600;
 }

@@ -1,16 +1,17 @@
-// src/components/layout/DashboardShell.tsx
 "use client";
 
-import { useState, ReactNode, useEffect } from "react";
+import React, { useState, useEffect, ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { getRestaurantSession, clearSession } from "../../lib/auth";
+import { WhatsAppService } from "../../lib/services/whatsapp.service";
+import { useTheme } from "../../hooks/useTheme";
+import { useToast } from "../ui/ToastContainer";
 import {
   LayoutDashboard,
   ShoppingBag,
   Utensils,
   Users,
-  Boxes,
   BarChart3,
   Settings,
   Menu,
@@ -19,88 +20,122 @@ import {
   MessageSquare,
   Power,
   ChevronDown,
-  Bot,
-  Cpu,
-  CreditCard
+  Sun,
+  Moon,
+  Laptop,
+  CreditCard,
+  Wifi,
+  WifiOff,
+  Store,
 } from "lucide-react";
 
 interface DashboardShellProps {
   children: ReactNode;
 }
 
-export default function DashboardShell({ children }: { children: ReactNode }) {
+export default function DashboardShell({ children }: DashboardShellProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { theme, setTheme } = useTheme();
+  const toast = useToast();
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [restaurantStatus, setRestaurantStatus] = useState<"open" | "busy" | "closed">("open");
-  const [restaurantName, setRestaurantName] = useState("Bella Italia");
+  const [restaurantName, setRestaurantName] = useState("Restroex Outlet");
+  const [restaurantId, setRestaurantId] = useState<string | null>(null);
 
-  // Notifications List Mock
-  const notifications = [
-    { id: 1, title: "New WhatsApp Order #482", time: "2 min ago", type: "order" },
-    { id: 2, title: "Tomato Stock Low (3 kg remaining)", time: "15 min ago", type: "alert" },
-    { id: 3, title: "Kitchen Queue: 5 pending tickets", time: "1 hr ago", type: "queue" },
-  ];
+  // Persistent WhatsApp Connection Status Indicator State
+  const [wsStatus, setWsStatus] = useState<"connected" | "connecting" | "disconnected">("connecting");
 
-  // Load restaurant name from local storage
+  // Load session & check persistent WhatsApp status
   useEffect(() => {
     const session = getRestaurantSession();
-    if (session?.name) {
-      setRestaurantName(session.name);
-    }
+    if (session?.name) setRestaurantName(session.name);
+    if (session?.restaurantId) setRestaurantId(session.restaurantId);
+
+    const checkWhatsAppHealth = async () => {
+      if (!session?.restaurantId) return;
+      try {
+        const res = await WhatsAppService.getStatus();
+        if (res.state === "connected") {
+          setWsStatus("connected");
+        } else if (res.state === "reconnecting") {
+          setWsStatus("connecting");
+        } else {
+          setWsStatus("disconnected");
+        }
+      } catch (err) {
+        setWsStatus("disconnected");
+      }
+    };
+
+    checkWhatsAppHealth();
+    const interval = setInterval(checkWhatsAppHealth, 10000); // 10s health check pulse
+    return () => clearInterval(interval);
   }, []);
 
   const navItems = [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { label: "Orders & Live Queue", href: "/dashboard/orders", icon: ShoppingBag },
-    { label: "Payments", href: "/dashboard/payments", icon: CreditCard },
+    { label: "Live Orders", href: "/dashboard/orders", icon: ShoppingBag, badge: "LIVE" },
     { label: "Menu Catalog", href: "/dashboard/menu", icon: Utensils },
-    { label: "Customers & CRM", href: "/dashboard/customers", icon: Users },
-    { label: "Inventory & Stock", href: "/dashboard/inventory", icon: Boxes },
-    { label: "Analytics & Sales", href: "/dashboard/analytics", icon: BarChart3 },
-    { label: "WhatsApp Hub", href: "/dashboard/whatsapp", icon: MessageSquare },
-    { label: "AI Engine", href: "/dashboard/ai", icon: Bot },
+    { label: "Payments", href: "/dashboard/payments", icon: CreditCard },
+    { label: "Customers", href: "/dashboard/customers", icon: Users },
+    { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
+    { label: "WhatsApp Bot", href: "/dashboard/whatsapp", icon: MessageSquare },
     { label: "Settings", href: "/dashboard/settings", icon: Settings },
+  ];
+
+  const mobileBottomNavItems = [
+    { label: "Orders", href: "/dashboard/orders", icon: ShoppingBag },
+    { label: "Menu", href: "/dashboard/menu", icon: Utensils },
+    { label: "WhatsApp", href: "/dashboard/whatsapp", icon: MessageSquare },
+    { label: "More", href: "/dashboard/settings", icon: Settings },
   ];
 
   const handleLogout = () => {
     clearSession();
+    toast.info("Logged out", "Session closed successfully");
     router.push("/login");
   };
 
   return (
-    <div className="min-h-screen bg-[#09090B] text-slate-100 font-sans flex">
-      {/* 1. SIDEBAR (Desktop) */}
-      <aside className="hidden lg:flex w-64 shrink-0 flex-col justify-between border-r border-[#23242B]/50 bg-[#09090B] p-5 relative">
-        <div className="absolute -left-16 top-0 h-64 w-64 rounded-full bg-violet-600/5 blur-[80px]" />
-        
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans flex flex-col lg:flex-row pb-16 lg:pb-0">
+      
+      {/* 1. DESKTOP SIDEBAR (Fixed Left) */}
+      <aside className="hidden lg:flex w-64 shrink-0 flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900 p-5 sticky top-0 h-screen z-30">
         <div>
-          {/* Brand header */}
-          <Link href="/dashboard" className="flex items-center gap-3 px-2 mb-8">
-            <span className="flex h-7.5 w-7.5 items-center justify-center rounded-lg bg-violet-600 text-xs font-bold text-white shadow-[0_0_15px_rgba(124,58,237,0.3)]">R</span>
-            <div>
-              <span className="text-sm font-bold tracking-tight text-white font-sora block leading-none">Restroex</span>
-              <span className="text-[10px] text-slate-500 font-medium mt-0.5 block">{restaurantName}</span>
+          {/* Outlet Brand Header */}
+          <Link href="/dashboard" className="flex items-center gap-3 px-2 mb-6">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 font-heading font-extrabold text-sm text-white shadow-md shadow-brand-600/30">
+              R
+            </span>
+            <div className="min-w-0 flex-1">
+              <span className="text-sm font-extrabold font-heading tracking-tight text-slate-900 dark:text-slate-100 truncate block">
+                Restroex POS
+              </span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate block">
+                {restaurantName}
+              </span>
             </div>
           </Link>
 
-          {/* Quick Restaurant Status Indicator */}
-          <div className="mb-6 px-2">
-            <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/30 border border-[#23242B] text-xs">
-              <span className="text-slate-400">Store Status:</span>
-              <div className="relative">
-                <select
-                  value={restaurantStatus}
-                  onChange={(e) => setRestaurantStatus(e.target.value as any)}
-                  className="bg-transparent font-semibold cursor-pointer text-slate-200 focus:outline-none pr-4 appearance-none"
-                >
-                  <option value="open" className="bg-slate-950 text-emerald-400">🟢 Open</option>
-                  <option value="busy" className="bg-slate-950 text-amber-500">🟡 Busy</option>
-                  <option value="closed" className="bg-slate-950 text-red-500">🔴 Closed</option>
-                </select>
-                <ChevronDown className="h-3 w-3 text-slate-400 absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none" />
+          {/* Restaurant Store Status Selector */}
+          <div className="mb-6 px-1">
+            <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 text-xs">
+              <div className="flex items-center gap-2">
+                <Store className="h-4 w-4 text-slate-500" />
+                <span className="font-semibold text-slate-700 dark:text-slate-300">Store:</span>
               </div>
+              <select
+                value={restaurantStatus}
+                onChange={(e) => setRestaurantStatus(e.target.value as any)}
+                className="bg-transparent font-bold cursor-pointer text-slate-900 dark:text-slate-100 focus:outline-none appearance-none pr-3"
+              >
+                <option value="open" className="bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400">🟢 Open</option>
+                <option value="busy" className="bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400">🟡 Busy</option>
+                <option value="closed" className="bg-white dark:bg-slate-900 text-red-600 dark:text-red-400">🔴 Closed</option>
+              </select>
             </div>
           </div>
 
@@ -114,170 +149,236 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-3.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                     isActive
-                      ? "bg-violet-600 text-white shadow-[0_0_15px_rgba(124,58,237,0.15)]"
-                      : "text-slate-400 hover:text-white hover:bg-slate-900/40"
+                      ? "bg-brand-600 text-white shadow-sm shadow-brand-600/20"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60"
                   }`}
                 >
-                  <Icon className="h-4.5 w-4.5 shrink-0" />
-                  {item.label}
+                  <div className="flex items-center gap-3">
+                    <Icon className="h-4.5 w-4.5 shrink-0" />
+                    <span>{item.label}</span>
+                  </div>
+                  {item.badge && (
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+                        isActive ? "bg-white/20 text-white" : "bg-red-500 text-white animate-pulse"
+                      }`}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
                 </Link>
               );
             })}
           </nav>
         </div>
 
-        {/* Footer controls */}
-        <div className="space-y-3 border-t border-[#23242B]/40 pt-4">
-          <div className="flex items-center justify-between px-2 text-xs text-slate-500">
-            <span className="flex items-center gap-1">
-              <MessageSquare className="h-3.5 w-3.5 text-emerald-500" />
-              WhatsApp Bot: Connected
+        {/* Footer controls & Persistent WhatsApp Indicator */}
+        <div className="space-y-3 border-t border-slate-100 dark:border-slate-800/80 pt-4">
+          <Link
+            href="/dashboard/whatsapp"
+            className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-xs font-semibold"
+          >
+            <div className="flex items-center gap-2">
+              {wsStatus === "connected" ? (
+                <Wifi className="h-4 w-4 text-emerald-500 animate-pulse" />
+              ) : (
+                <WifiOff className="h-4 w-4 text-red-500" />
+              )}
+              <span className="text-slate-700 dark:text-slate-300">WhatsApp Bot</span>
+            </div>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                wsStatus === "connected"
+                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                  : "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
+              }`}
+            >
+              {wsStatus}
             </span>
-          </div>
+          </Link>
 
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:text-red-400 hover:bg-red-950/20 transition-all text-left"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all text-left"
           >
             <Power className="h-4.5 w-4.5" />
-            Logout Account
+            <span>Logout Account</span>
           </button>
         </div>
       </aside>
 
-      {/* 2. MAIN HUB WORKSPACE CONTAINER */}
+      {/* 2. MAIN WORKSPACE */}
       <div className="flex-1 flex flex-col min-w-0">
         
-        {/* Top Header Bar */}
-        <header className="h-16 border-b border-[#23242B]/50 px-6 flex items-center justify-between shrink-0 relative bg-[#09090B]">
+        {/* Persistent Top Bar */}
+        <header className="h-16 border-b border-slate-200 dark:border-slate-800/80 px-4 sm:px-6 flex items-center justify-between shrink-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md sticky top-0 z-20">
+          
           {/* Mobile hamburger menu toggle */}
           <button
             onClick={() => setMobileMenuOpen(true)}
-            className="lg:hidden p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-900/40 transition-colors"
+            className="lg:hidden p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
           >
             <Menu className="h-5 w-5" />
           </button>
 
-          {/* Page Route Title */}
-          <div className="hidden lg:block text-xs font-semibold text-slate-500 uppercase tracking-widest">
-            {pathname === "/dashboard" ? "System Overview" : pathname.replace("/dashboard/", "").replace("-", " ")}
+          {/* Left Title & Persistent WhatsApp Indicator Dot */}
+          <div className="flex items-center gap-3">
+            <h1 className="font-heading text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 capitalize">
+              {pathname === "/dashboard" ? "Live Operations" : pathname.replace("/dashboard/", "").replace("-", " ")}
+            </h1>
+
+            {/* PERSISTENT STATUS DOT REQUIREMENT */}
+            <Link href="/dashboard/whatsapp" title={`WhatsApp Bot Status: ${wsStatus}`}>
+              <span className="relative flex h-3 w-3 cursor-pointer">
+                <span
+                  className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                    wsStatus === "connected" ? "bg-emerald-400" : "bg-red-400"
+                  }`}
+                />
+                <span
+                  className={`relative inline-flex rounded-full h-3 w-3 ${
+                    wsStatus === "connected" ? "bg-emerald-500" : "bg-red-500"
+                  }`}
+                />
+              </span>
+            </Link>
           </div>
 
-          {/* Right Control Actions */}
-          <div className="flex items-center gap-4 ml-auto relative">
+          {/* Right Header Actions (Theme Toggle, Notifications) */}
+          <div className="flex items-center gap-2 sm:gap-3">
             
-            {/* Notification Dropdown Trigger */}
+            {/* Dark/Light Mode Manual Toggle Button */}
+            <div className="flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80">
+              <button
+                onClick={() => setTheme("light")}
+                className={`p-1.5 rounded-lg text-xs transition-colors ${
+                  theme === "light" ? "bg-white text-amber-500 shadow-sm" : "text-slate-400 hover:text-slate-700"
+                }`}
+                title="Light Mode"
+              >
+                <Sun className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setTheme("dark")}
+                className={`p-1.5 rounded-lg text-xs transition-colors ${
+                  theme === "dark" ? "bg-slate-950 text-indigo-400 shadow-sm" : "text-slate-400 hover:text-slate-200"
+                }`}
+                title="Dark Mode"
+              >
+                <Moon className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Notifications Feed Bell */}
             <div className="relative">
               <button
                 onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-900/40 transition-colors relative"
+                className="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 relative"
               >
                 <Bell className="h-5 w-5" />
-                <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-violet-500 ring-2 ring-[#09090B]" />
+                <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-brand-600 ring-2 ring-white dark:ring-slate-900" />
               </button>
 
-              {/* Notification Overlay Popover */}
               {isNotificationsOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setIsNotificationsOpen(false)} />
-                  <div className="absolute right-0 mt-2.5 w-80 rounded-2xl bg-[#0e0f14] border border-[#23242B] p-4 shadow-2xl z-50 space-y-3">
-                    <div className="flex items-center justify-between border-b border-[#23242B]/40 pb-2">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Operations Feed</h4>
-                      <button
-                        onClick={() => setIsNotificationsOpen(false)}
-                        className="text-[10px] text-violet-400 hover:underline"
-                      >
-                        Dismiss All
+                  <div className="absolute right-0 mt-2 w-80 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 shadow-xl z-50 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Live Alerts</h4>
+                      <button onClick={() => setIsNotificationsOpen(false)} className="text-xs text-brand-600 hover:underline">
+                        Dismiss
                       </button>
                     </div>
-                    <div className="space-y-2.5">
-                      {notifications.map((notif) => (
-                        <div key={notif.id} className="text-xs p-2.5 rounded-xl bg-slate-900/30 hover:bg-slate-900/60 border border-[#23242B] transition-all">
-                          <div className="font-medium text-slate-200">{notif.title}</div>
-                          <div className="text-[10px] text-slate-500 mt-1">{notif.time}</div>
-                        </div>
-                      ))}
+                    <div className="space-y-2 text-xs">
+                      <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                        <div className="font-bold text-slate-900 dark:text-slate-100">WhatsApp Engine Ready</div>
+                        <div className="text-slate-500 mt-0.5">Listening for incoming customer orders.</div>
+                      </div>
                     </div>
                   </div>
                 </>
               )}
             </div>
 
-            {/* Profile widget */}
-            <div className="flex items-center gap-2.5 border-l border-[#23242B]/50 pl-4">
-              <div className="w-8 h-8 rounded-full bg-violet-600/30 border border-violet-500 flex items-center justify-center text-xs font-bold text-violet-300">
-                OP
-              </div>
-              <div className="hidden sm:block text-left">
-                <span className="text-xs font-semibold text-slate-200 block">Operator Hub</span>
-                <span className="text-[10px] text-slate-500 block">Restroex Admin</span>
-              </div>
+            {/* Staff Profile Avatar */}
+            <div className="h-9 w-9 rounded-xl bg-brand-100 dark:bg-brand-950 border border-brand-200 dark:border-brand-800 flex items-center justify-center text-xs font-extrabold text-brand-700 dark:text-brand-300">
+              ST
             </div>
           </div>
         </header>
 
-        {/* Dynamic page contents wrapper */}
-        <main className="flex-1 overflow-y-auto p-6 md:p-8 bg-[#09090B]/40 relative">
-          <div className="absolute top-0 right-0 h-96 w-96 rounded-full bg-violet-600/5 blur-[120px] pointer-events-none" />
-          <div className="max-w-7xl mx-auto space-y-8">
-            {children}
-          </div>
+        {/* Dynamic Page Content */}
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-8">
+          {children}
         </main>
       </div>
 
-      {/* 3. MOBILE MENU SIDEBAR DRAWER */}
+      {/* 3. MOBILE FIRST BOTTOM TAB NAVIGATION BAR (Mandatory for Restaurant Counter Staff) */}
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 h-16 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center justify-around z-40 px-2 shadow-lg">
+        {mobileBottomNavItems.map((item) => {
+          const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+          const Icon = item.icon;
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex flex-col items-center justify-center w-full h-full py-1 text-[11px] font-bold transition-all ${
+                isActive
+                  ? "text-brand-600 dark:text-brand-400"
+                  : "text-slate-500 dark:text-slate-400 hover:text-slate-900"
+              }`}
+            >
+              <Icon className={`h-5 w-5 mb-0.5 ${isActive ? "scale-110" : ""}`} />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* Mobile Drawer Overlay */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-50 flex lg:hidden">
-          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)} />
-          
-          <aside className="relative flex w-64 flex-col justify-between border-r border-[#23242B] bg-[#09090B] p-5 z-50">
+          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)} />
+          <aside className="relative flex w-72 flex-col justify-between border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 z-50">
             <div>
-              <div className="flex items-center justify-between mb-8">
-                <Link href="/dashboard" className="flex items-center gap-3">
-                  <span className="flex h-7.5 w-7.5 items-center justify-center rounded-lg bg-violet-600 text-xs font-bold text-white">R</span>
-                  <span className="text-sm font-bold text-white font-sora">Restroex</span>
-                </Link>
-                <button
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-white"
-                >
+              <div className="flex items-center justify-between mb-6">
+                <span className="font-heading font-extrabold text-base text-slate-900 dark:text-slate-100">
+                  Restroex Menu
+                </span>
+                <button onClick={() => setMobileMenuOpen(false)} className="p-1 rounded-lg text-slate-400">
                   <X className="h-5 w-5" />
                 </button>
               </div>
-
               <nav className="space-y-1">
                 {navItems.map((item) => {
                   const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
                   const Icon = item.icon;
-
                   return (
                     <Link
                       key={item.href}
                       href={item.href}
                       onClick={() => setMobileMenuOpen(false)}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                        isActive ? "bg-violet-600 text-white" : "text-slate-400 hover:text-white"
+                      className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold ${
+                        isActive ? "bg-brand-600 text-white" : "text-slate-600 dark:text-slate-400"
                       }`}
                     >
-                      <Icon className="h-4.5 w-4.5 shrink-0" />
-                      {item.label}
+                      <Icon className="h-4.5 w-4.5" />
+                      <span>{item.label}</span>
                     </Link>
                   );
                 })}
               </nav>
             </div>
-
-            <div className="border-t border-[#23242B]/40 pt-4 space-y-2">
-              <button
-                onClick={handleLogout}
-                className="w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:text-red-400"
-              >
-                <Power className="h-4.5 w-4.5" />
-                Logout
-              </button>
-            </div>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-3 px-3 py-2.5 text-sm font-semibold text-red-600"
+            >
+              <Power className="h-4.5 w-4.5" />
+              <span>Logout</span>
+            </button>
           </aside>
         </div>
       )}

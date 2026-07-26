@@ -1,141 +1,81 @@
-// src/app/dashboard/menu/page.tsx
 "use client";
 
-import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { MenuService } from "../../../lib/services/menu.service";
+import { MenuItem, Category } from "../../../types";
+import { useToast } from "../../../components/ui/ToastContainer";
+import Button from "../../../components/ui/Button";
+import Badge from "../../../components/ui/Badge";
+import Card from "../../../components/ui/Card";
+import Skeleton from "../../../components/ui/Skeleton";
+import { EmptyState, ErrorState } from "../../../components/ui/StateViews";
+import { Modal } from "../../../components/ui/Modal";
+import { Input, Select } from "../../../components/ui/Input";
 import {
   Search,
   Plus,
   RefreshCw,
   UtensilsCrossed,
-  Filter,
   Leaf,
   Drumstick,
   Star,
-  ThumbsUp,
+  Eye,
+  EyeOff,
+  Edit2,
+  Trash2,
+  Copy,
   SlidersHorizontal,
   X,
+  Sparkles,
+  Smartphone,
+  ChevronRight,
+  Check,
+  Zap,
+  Tag,
+  FolderPlus,
+  FolderEdit
 } from "lucide-react";
-import { MenuService } from "../../../lib/services/menu.service";
-import { MenuItem, Category } from "../../../types";
-import { CategorySidebar } from "../../../components/menu/CategorySidebar";
-import { ItemCard } from "../../../components/menu/ItemCard";
-import { ItemEditor } from "../../../components/menu/ItemEditor";
-import { ToastProvider, toast } from "../../../components/menu/Toast";
 
-// ── Skeleton ──────────────────────────────────────────────────────────────────
-
-function CardSkeleton() {
-  return (
-    <div className="bg-[#181E29] rounded-2xl border border-white/5 shadow-lg overflow-hidden flex flex-col h-full animate-pulse">
-      <div className="h-44 bg-white/5" />
-      <div className="p-4 space-y-3 flex-1">
-        <div className="h-4 bg-white/10 rounded w-3/4" />
-        <div className="h-3 bg-white/5 rounded w-1/2" />
-        <div className="h-6 bg-white/5 rounded-full w-24 mt-4" />
-      </div>
-    </div>
-  );
-}
-
-// ── Empty state ───────────────────────────────────────────────────────────────
-
-function EmptyState({ categorySelected, onAdd }: { categorySelected: boolean; onAdd: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center flex-1 py-32 text-center px-8 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 mx-6 my-6 shadow-2xl">
-      <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-violet-500/20 to-purple-500/20 border border-violet-500/30 flex items-center justify-center mb-6 shadow-[inset_0_0_20px_rgba(139,92,246,0.1)]">
-        <UtensilsCrossed size={40} className="text-violet-300" />
-      </div>
-      <h3 className="text-2xl font-bold text-white mb-3 tracking-tight">
-        {categorySelected ? "Category is empty" : "Let's build your menu"}
-      </h3>
-      <p className="text-sm text-slate-300 mb-10 max-w-sm leading-relaxed">
-        {categorySelected
-          ? "Start building this category by adding your first menu item."
-          : "Create your first category and add mouth-watering items to start taking WhatsApp orders automatically."}
-      </p>
-
-      {!categorySelected && (
-        <div className="flex items-center gap-4 mb-10 text-sm font-medium text-slate-400">
-          <span className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-lg border border-white/5"><span className="w-5 h-5 rounded-full bg-violet-500/20 text-violet-300 flex items-center justify-center text-xs">1</span> Categories</span>
-          <span className="text-slate-600">→</span>
-          <span className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-lg border border-white/5"><span className="w-5 h-5 rounded-full bg-violet-500/20 text-violet-300 flex items-center justify-center text-xs">2</span> Add Items</span>
-          <span className="text-slate-600">→</span>
-          <span className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-lg border border-white/5"><span className="w-5 h-5 rounded-full bg-violet-500/20 text-violet-300 flex items-center justify-center text-xs">3</span> Auto-Orders</span>
-        </div>
-      )}
-
-      <button
-        onClick={onAdd}
-        className="flex items-center gap-2 px-8 py-3.5 bg-white text-slate-900 text-sm font-bold rounded-xl shadow-[0_4px_20px_rgba(255,255,255,0.2)] hover:shadow-[0_4px_25px_rgba(255,255,255,0.3)] hover:-translate-y-0.5 transition-all"
-      >
-        <Plus size={18} /> Add Your First Item
-      </button>
-    </div>
-  );
-}
-
-// ── Confirm dialog ─────────────────────────────────────────────────────────────
-
-interface ConfirmState {
-  open: boolean;
-  title: string;
-  message: string;
-  onConfirm: () => void;
-}
-
-function ConfirmDialog({ state, onClose }: { state: ConfirmState; onClose: () => void }) {
-  if (!state.open) return null;
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-[#181E29] rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4 border border-white/10 animate-in zoom-in-95 duration-200">
-        <h3 className="text-lg font-bold text-white mb-2">{state.title}</h3>
-        <p className="text-sm text-slate-300 mb-8 leading-relaxed">{state.message}</p>
-        <div className="flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 py-3 rounded-xl bg-white/5 text-sm font-semibold text-white hover:bg-white/10 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => { state.onConfirm(); onClose(); }}
-            className="flex-1 py-3 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-400 text-sm font-semibold hover:bg-rose-500 hover:text-white transition-all shadow-sm"
-          >
-            Delete
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Main page ─────────────────────────────────────────────────────────────────
-
-export default function MenuPage() {
+export default function ProductionMenuCatalogPage() {
+  const toast = useToast();
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<MenuItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-
+  const [isError, setIsError] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
-  const [isNewItem, setIsNewItem] = useState(false);
 
+  // Search & Filters
   const [searchQuery, setSearchQuery] = useState("");
   const [filterVeg, setFilterVeg] = useState<"all" | "veg" | "non-veg">("all");
-  const [filterAvail, setFilterAvail] = useState<"all" | "available" | "hidden">("all");
 
-  const [dragItem, setDragItem] = useState<string | null>(null);
-  const [dragOverItem, setDragOverItem] = useState<string | null>(null);
+  // Category Management Modal State (FIX 2)
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [categoryName, setCategoryName] = useState("");
+  const [categorySortOrder, setCategorySortOrder] = useState(1);
+  const [categoryIsVisible, setCategoryIsVisible] = useState(true);
+  const [isSavingCategory, setIsSavingCategory] = useState(false);
 
-  const [confirm, setConfirm] = useState<ConfirmState>({
-    open: false, title: "", message: "", onConfirm: () => {},
+  // Item Editor Modal
+  const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isNewItem, setIsNewItem] = useState(false);
+
+  const [formData, setFormData] = useState({
+    name: "",
+    basePrice: 0,
+    categoryId: "",
+    description: "",
+    vegType: "veg" as "veg" | "non-veg",
+    isPopular: false,
+    variants: [{ variantName: "Full", price: 0 }],
   });
 
-  // ── Data loading ────────────────────────────────────────────────────────────
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
-  const loadAll = useCallback(async (showRefreshing = false) => {
-    if (showRefreshing) setRefreshing(true);
+  const loadMenuData = useCallback(async () => {
+    setIsLoading(true);
+    setIsError(false);
     try {
       const [cats, itms] = await Promise.all([
         MenuService.listCategories().catch(() => []),
@@ -143,475 +83,514 @@ export default function MenuPage() {
       ]);
       setCategories(cats);
       setItems(itms);
-    } catch {
-      toast("Failed to load menu data", "error");
+    } catch (err) {
+      console.error("Failed to fetch menu items:", err);
+      setIsError(true);
     } finally {
       setIsLoading(false);
-      setRefreshing(false);
     }
   }, []);
 
-  useEffect(() => { loadAll(); }, [loadAll]);
+  useEffect(() => {
+    loadMenuData();
+  }, [loadMenuData]);
 
-  // ── Filtered items ──────────────────────────────────────────────────────────
+  // FIX 2: Category Create / Update Handler
+  const handleSaveCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!categoryName.trim()) {
+      toast.warning("Validation Error", "Category name is required.");
+      return;
+    }
+    setIsSavingCategory(true);
+    try {
+      if (editingCategory) {
+        const updated = await MenuService.updateCategory(editingCategory.id, {
+          name: categoryName,
+          displayOrder: Number(categorySortOrder),
+          isVisible: categoryIsVisible,
+        });
+        setCategories((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+        toast.success("Category Updated", `Renamed category to "${updated.name}".`);
+      } else {
+        const created = await MenuService.createCategory({
+          name: categoryName,
+          displayOrder: Number(categorySortOrder),
+          isVisible: categoryIsVisible,
+        });
+        setCategories((prev) => [...prev, created]);
+        toast.success("Category Created", `Created category "${created.name}".`);
+      }
+      setIsCategoryModalOpen(false);
+    } catch (err: any) {
+      toast.error("Category Error", err.message || "Could not save category.");
+    } finally {
+      setIsSavingCategory(false);
+    }
+  };
+
+  // FIX 2: Category Delete with Item Confirmation Guard
+  const handleDeleteCategory = async (cat: Category) => {
+    const itemsInCat = items.filter((i) => i.categoryId === cat.id);
+    const confirmMsg = itemsInCat.length > 0
+      ? `Category "${cat.name}" contains ${itemsInCat.length} menu items. Are you sure you want to delete this category? Items will lose category assignment.`
+      : `Delete category "${cat.name}"?`;
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      await MenuService.deleteCategory(cat.id);
+      setCategories((prev) => prev.filter((c) => c.id !== cat.id));
+      if (selectedCategoryId === cat.id) setSelectedCategoryId(null);
+      toast.warning("Category Deleted", `Deleted "${cat.name}".`);
+    } catch (err: any) {
+      toast.error("Delete Error", err.message || "Failed to delete category.");
+    }
+  };
+
+  // Instant Availability Toggle
+  const handleToggleAvailability = async (item: MenuItem, currentStatus: boolean) => {
+    const nextStatus = !currentStatus;
+    setItems((prev) =>
+      prev.map((i) => (i.id === item.id ? { ...i, isAvailable: nextStatus } : i))
+    );
+    toast.info(
+      nextStatus ? `${item.name} Available` : `${item.name} Hidden`,
+      nextStatus ? "Item live for WhatsApp orders" : "Item marked out of stock"
+    );
+
+    try {
+      await MenuService.updateAvailability(item.id, nextStatus);
+    } catch (err) {
+      setItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, isAvailable: currentStatus } : i))
+      );
+      toast.error("Update Failed", "Reverted availability status");
+    }
+  };
+
+  const handleBulkToggle = async (enable: boolean) => {
+    const targetIds = filteredItems.map((i) => i.id);
+    setItems((prev) =>
+      prev.map((i) => (targetIds.includes(i.id) ? { ...i, isAvailable: enable } : i))
+    );
+    toast.success("Bulk Updated", `${targetIds.length} items marked ${enable ? "Live" : "Out of Stock"}`);
+  };
+
+  const handleSaveItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (isNewItem) {
+        const created = await MenuService.createItem({
+          name: formData.name,
+          basePrice: Number(formData.basePrice),
+          categoryId: formData.categoryId || undefined,
+          description: formData.description,
+          vegType: formData.vegType,
+          isPopular: formData.isPopular,
+          variants: formData.variants.map((v, i) => ({ variantName: v.variantName, price: Number(v.price), displayOrder: i })),
+        });
+        setItems((prev) => [...prev, created]);
+        toast.success("Item Created", `"${created.name}" added to catalog.`);
+      } else if (editingItem) {
+        const updated = await MenuService.updateItem(editingItem.id, {
+          name: formData.name,
+          basePrice: Number(formData.basePrice),
+          categoryId: formData.categoryId || undefined,
+          description: formData.description,
+          vegType: formData.vegType,
+          isPopular: formData.isPopular,
+          variants: formData.variants.map((v, i) => ({ variantName: v.variantName, price: Number(v.price), displayOrder: i })),
+        });
+        setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+        toast.success("Item Saved", `Updated details for "${updated.name}".`);
+      }
+      setIsModalOpen(false);
+    } catch (err: any) {
+      toast.error("Save Error", err.message || "Could not save menu item.");
+    }
+  };
+
+  const handleDeleteItem = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+    setItems((prev) => prev.filter((i) => i.id !== id));
+    try {
+      await MenuService.deleteItem(id);
+      toast.warning("Item Deleted", `Removed "${name}" from menu.`);
+    } catch (err) {
+      loadMenuData();
+      toast.error("Delete Failed", "Reverted deleted item.");
+    }
+  };
 
   const filteredItems = useMemo(() => {
-    let result = items;
-
-    // Category filter
-    if (selectedCategoryId) {
-      const subIds = categories.filter((c) => c.parentId === selectedCategoryId).map((c) => c.id);
-      result = result.filter(
-        (i) => i.categoryId === selectedCategoryId || subIds.includes(i.subcategoryId || ""),
-      );
-    }
-
-    // Search
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (i) =>
-          i.name.toLowerCase().includes(q) ||
-          (i.description || "").toLowerCase().includes(q) ||
-          (i.aliases || []).some((a) => a.toLowerCase().includes(q)) ||
-          i.variants.some((v) => v.variantName.toLowerCase().includes(q)),
-      );
-    }
-
-    // Veg filter
-    if (filterVeg !== "all") result = result.filter((i) => i.vegType === filterVeg);
-
-    // Availability filter
-    if (filterAvail === "available") result = result.filter((i) => i.isAvailable);
-    if (filterAvail === "hidden") result = result.filter((i) => !i.isAvailable);
-
-    return result.sort((a, b) => a.displayOrder - b.displayOrder);
-  }, [items, categories, selectedCategoryId, searchQuery, filterVeg, filterAvail]);
-
-  // ── Category actions ────────────────────────────────────────────────────────
-
-  const handleCreateCategory = async (name: string, parentId?: string) => {
-    try {
-      const cat = await MenuService.createCategory({
-        name,
-        parentId,
-        isVisible: true,
-        displayOrder: categories.filter((c) => !c.parentId).length,
-      });
-      setCategories((prev) => [...prev, cat]);
-      toast(`"${name}" created`, "success");
-    } catch {
-      toast("Failed to create category", "error");
-    }
-  };
-
-  const handleRenameCategory = async (id: string, name: string) => {
-    try {
-      const updated = await MenuService.updateCategory(id, { name });
-      setCategories((prev) => prev.map((c) => (c.id === id ? updated : c)));
-      toast("Category renamed", "success");
-    } catch {
-      toast("Failed to rename category", "error");
-    }
-  };
-
-  const handleDeleteCategory = async (id: string) => {
-    const cat = categories.find((c) => c.id === id);
-    setConfirm({
-      open: true,
-      title: "Delete category",
-      message: `Delete "${cat?.name}"? Items in this category won't be deleted but will lose their category assignment.`,
-      onConfirm: async () => {
-        try {
-          await MenuService.deleteCategory(id);
-          setCategories((prev) => prev.filter((c) => c.id !== id));
-          if (selectedCategoryId === id) setSelectedCategoryId(null);
-          toast("Category deleted", "success");
-        } catch {
-          toast("Failed to delete category", "error");
-        }
-      },
+    return items.filter((item) => {
+      const matchesCategory = selectedCategoryId ? item.categoryId === selectedCategoryId : true;
+      const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase()));
+      const matchesVeg = filterVeg === "all" ? true : item.vegType === filterVeg;
+      return matchesCategory && matchesSearch && matchesVeg;
     });
-  };
-
-  const handleToggleCategoryVisible = async (id: string, isVisible: boolean) => {
-    try {
-      const updated = await MenuService.updateCategory(id, { isVisible });
-      setCategories((prev) => prev.map((c) => (c.id === id ? updated : c)));
-      toast(isVisible ? "Category visible" : "Category hidden", "success");
-    } catch {
-      toast("Failed to update category", "error");
-    }
-  };
-
-  const handleReorderCategories = async (ordered: { id: string; displayOrder: number }[]) => {
-    // Optimistic update
-    setCategories((prev) =>
-      prev.map((c) => {
-        const o = ordered.find((x) => x.id === c.id);
-        return o ? { ...c, displayOrder: o.displayOrder } : c;
-      }),
-    );
-    try {
-      await MenuService.reorderCategories(ordered);
-    } catch {
-      toast("Failed to reorder categories", "error");
-      loadAll();
-    }
-  };
-
-  // ── Item actions ────────────────────────────────────────────────────────────
-
-  const handleSelectItem = (item: MenuItem) => {
-    setSelectedItem(item);
-    setIsNewItem(false);
-  };
-
-  const handleAddItem = () => {
-    setSelectedItem(null);
-    setIsNewItem(true);
-  };
-
-  const handleCloseEditor = () => {
-    setSelectedItem(null);
-    setIsNewItem(false);
-  };
-
-  const handleSaveItem = async (data: any) => {
-    const { variants, customizations, ...rest } = data;
-    try {
-      let saved: MenuItem;
-      if (isNewItem) {
-        saved = await MenuService.createItem({
-          ...rest,
-          categoryId: rest.categoryId || selectedCategoryId || undefined,
-          variants: variants.map((v: any) => ({
-            variantName: v.variantName,
-            price: Number(v.price),
-            displayOrder: v.displayOrder,
-          })),
-        });
-        setItems((prev) => [...prev, saved]);
-        toast(`"${saved.name}" added`, "success");
-      } else if (selectedItem) {
-        saved = await MenuService.updateItem(selectedItem.id, {
-          ...rest,
-          variants: variants.map((v: any) => ({
-            variantName: v.variantName,
-            price: Number(v.price),
-            displayOrder: v.displayOrder,
-          })),
-        });
-        // Update customizations separately
-        if (customizations.length > 0 || (selectedItem.customizations || []).length > 0) {
-          // Delete removed ones
-          for (const existing of selectedItem.customizations || []) {
-            if (!customizations.find((c: any) => c.id === existing.id)) {
-              await MenuService.deleteCustomization(selectedItem.id, existing.id).catch(() => {});
-            }
-          }
-          // Create/update remaining
-          for (const c of customizations) {
-            if (c.id) {
-              await MenuService.updateCustomization(selectedItem.id, c.id, {
-                name: c.name, priceAdjustment: c.priceAdjustment, isAvailable: c.isAvailable,
-              }).catch(() => {});
-            } else {
-              await MenuService.createCustomization(selectedItem.id, {
-                name: c.name, priceAdjustment: c.priceAdjustment, isAvailable: c.isAvailable,
-              }).catch(() => {});
-            }
-          }
-          // Re-fetch for fresh customizations
-          await loadAll();
-        } else {
-          setItems((prev) => prev.map((i) => (i.id === saved.id ? saved : i)));
-        }
-        toast(`"${saved.name}" updated`, "success");
-      } else return;
-
-      setSelectedItem(saved);
-      setIsNewItem(false);
-    } catch (err: any) {
-      toast(err?.message || "Failed to save item", "error");
-    }
-  };
-
-  const handleToggleAvailability = async (item: MenuItem, isAvailable: boolean) => {
-    // Optimistic
-    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, isAvailable } : i)));
-    if (selectedItem?.id === item.id) setSelectedItem((s) => s && { ...s, isAvailable });
-    try {
-      await MenuService.updateAvailability(item.id, isAvailable);
-    } catch {
-      // Revert
-      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, isAvailable: !isAvailable } : i)));
-      toast("Failed to update availability", "error");
-    }
-  };
-
-  const handleDeleteItem = (item: MenuItem) => {
-    setConfirm({
-      open: true,
-      title: "Delete item",
-      message: `Delete "${item.name}"? This action cannot be undone.`,
-      onConfirm: async () => {
-        try {
-          await MenuService.deleteItem(item.id);
-          setItems((prev) => prev.filter((i) => i.id !== item.id));
-          if (selectedItem?.id === item.id) handleCloseEditor();
-          toast(`"${item.name}" deleted`, "success");
-        } catch (err: any) {
-          toast(err?.message || "Failed to delete item", "error");
-        }
-      },
-    });
-  };
-
-  const handleDuplicateItem = async (item: MenuItem) => {
-    try {
-      const dup = await MenuService.createItem({
-        name: `${item.name} (Copy)`,
-        basePrice: item.basePrice,
-        aliases: item.aliases,
-        categoryId: item.categoryId || undefined,
-        subcategoryId: item.subcategoryId || undefined,
-        description: item.description || undefined,
-        vegType: item.vegType,
-        preparationTime: item.preparationTime,
-        isPopular: item.isPopular,
-        isRecommended: item.isRecommended,
-        displayOrder: item.displayOrder + 1,
-        variants: item.variants.map((v) => ({
-          variantName: v.variantName, price: v.price, displayOrder: v.displayOrder,
-        })),
-      });
-      setItems((prev) => [...prev, dup]);
-      toast(`"${dup.name}" duplicated`, "success");
-    } catch {
-      toast("Failed to duplicate item", "error");
-    }
-  };
-
-  // ── Item drag & drop ────────────────────────────────────────────────────────
-
-  const handleItemDrop = async (toId: string) => {
-    if (!dragItem || dragItem === toId) return;
-    const sorted = [...filteredItems];
-    const fromIdx = sorted.findIndex((i) => i.id === dragItem);
-    const toIdx = sorted.findIndex((i) => i.id === toId);
-    if (fromIdx === -1 || toIdx === -1) return;
-    const [moved] = sorted.splice(fromIdx, 1);
-    sorted.splice(toIdx, 0, moved);
-    const orders = sorted.map((i, idx) => ({ id: i.id, displayOrder: idx }));
-    // Optimistic
-    setItems((prev) => {
-      const updated = [...prev];
-      for (const o of orders) {
-        const idx = updated.findIndex((i) => i.id === o.id);
-        if (idx !== -1) updated[idx] = { ...updated[idx], displayOrder: o.displayOrder };
-      }
-      return updated;
-    });
-    setDragItem(null);
-    setDragOverItem(null);
-    try {
-      await MenuService.reorderItems(orders);
-    } catch {
-      toast("Failed to reorder items", "error");
-      loadAll();
-    }
-  };
-
-  // ── Stats ───────────────────────────────────────────────────────────────────
-
-  const stats = useMemo(() => ({
-    total: items.length,
-    available: items.filter((i) => i.isAvailable).length,
-    veg: items.filter((i) => i.vegType === "veg").length,
-    popular: items.filter((i) => i.isPopular).length,
-  }), [items]);
-
-  const isEditorOpen = isNewItem || selectedItem !== null;
-
-  // ── Render ──────────────────────────────────────────────────────────────────
+  }, [items, selectedCategoryId, searchQuery, filterVeg]);
 
   return (
-    <div className="flex flex-col h-screen bg-[#0A0D14] overflow-hidden selection:bg-violet-500/30 selection:text-violet-200">
-      <ToastProvider />
-      <ConfirmDialog state={confirm} onClose={() => setConfirm((s) => ({ ...s, open: false }))} />
+    <div className="space-y-6">
+      
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+        <div>
+          <h1 className="font-heading text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100">
+            Interactive Menu & Category Manager
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            Category CRUD management, availability toggles, and WhatsApp customer preview.
+          </p>
+        </div>
 
-      {/* ── Top Header ───────────────────────────────────────────────────────── */}
-      <div className="shrink-0 bg-[#0F141F] border-b border-white/10 px-6 py-4 shadow-sm z-20">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-white tracking-tight">Menu Builder</h1>
-            <p className="text-xs text-slate-400 mt-0.5 font-medium">
-              <span className="text-white">{stats.total}</span> items · <span className="text-emerald-400">{stats.available}</span> live · <span className="text-amber-400">{stats.popular}</span> popular
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            {/* Search */}
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search items, aliases, variants…"
-                className="pl-9 pr-4 py-2 text-sm bg-white/5 border border-white/10 rounded-xl w-72 focus:outline-none focus:ring-1 focus:ring-violet-400 focus:bg-white/10 text-white placeholder-slate-500 transition-all"
-              />
-              {searchQuery && (
-                <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors">
-                  <X size={13} />
-                </button>
-              )}
-            </div>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsPreviewOpen(true)}
+            className="gap-2 font-semibold text-brand-600 dark:text-brand-400"
+          >
+            <Smartphone className="h-4 w-4" />
+            <span>WhatsApp Preview</span>
+          </Button>
 
-            {/* Filters */}
-            <div className="flex items-center gap-1 border border-white/10 rounded-xl p-1 bg-white/5">
-              {([
-                { val: "all" as const, label: "All", icon: null },
-                { val: "veg" as const, label: "Veg", icon: <Leaf size={11} className="text-emerald-400" /> },
-                { val: "non-veg" as const, label: "Non-Veg", icon: <Drumstick size={11} className="text-rose-400" /> },
-              ].map(({ val, label, icon }) => (
-                <button
-                  key={val}
-                  onClick={() => setFilterVeg(val)}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all
-                    ${filterVeg === val ? "bg-white/10 text-white shadow-sm border border-white/10" : "text-slate-400 hover:text-slate-200 hover:bg-white/5 border border-transparent"}`}
-                >
-                  {icon}{label}
-                </button>
-              )))}
-            </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setEditingCategory(null);
+              setCategoryName("");
+              setCategorySortOrder(categories.length + 1);
+              setCategoryIsVisible(true);
+              setIsCategoryModalOpen(true);
+            }}
+            className="gap-1.5 font-bold"
+          >
+            <FolderPlus className="h-4 w-4 text-brand-600" />
+            <span>+ Add Category</span>
+          </Button>
 
-            <div className="flex items-center gap-1 border border-white/10 rounded-xl p-1 bg-white/5">
-              {([
-                { val: "all", label: "All" },
-                { val: "available", label: "Live" },
-                { val: "hidden", label: "Hidden" },
-              ] as const).map(({ val, label }) => (
-                <button
-                  key={val}
-                  onClick={() => setFilterAvail(val)}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all
-                    ${filterAvail === val ? "bg-white/10 text-white shadow-sm border border-white/10" : "text-slate-400 hover:text-slate-200 hover:bg-white/5 border border-transparent"}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {/* Refresh */}
-            <button
-              onClick={() => loadAll(true)}
-              disabled={refreshing}
-              className="p-2 border border-white/10 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 transition-colors"
-              title="Refresh"
-            >
-              <RefreshCw size={15} className={refreshing ? "animate-spin" : ""} />
-            </button>
-
-            {/* Add Item */}
-            <button
-              onClick={handleAddItem}
-              className="flex items-center gap-2 px-5 py-2 bg-white text-slate-900 text-sm font-bold rounded-xl shadow-[0_2px_10px_rgba(255,255,255,0.1)] hover:shadow-[0_2px_15px_rgba(255,255,255,0.2)] hover:-translate-y-0.5 transition-all"
-            >
-              <Plus size={16} /> Add Item
-            </button>
-          </div>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              setIsNewItem(true);
+              setEditingItem(null);
+              setFormData({
+                name: "",
+                basePrice: 150,
+                categoryId: categories[0]?.id || "",
+                description: "",
+                vegType: "veg",
+                isPopular: false,
+                variants: [{ variantName: "Half", price: 100 }, { variantName: "Full", price: 180 }],
+              });
+              setIsModalOpen(true);
+            }}
+            className="gap-2 font-bold shadow-md"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Add Item</span>
+          </Button>
         </div>
       </div>
 
-      {/* ── Three-panel layout ────────────────────────────────────────────────── */}
-      <div className="flex flex-1 overflow-hidden relative">
-        
-        {/* Background glow effect for premium feel */}
-        <div className="absolute top-0 left-[20%] w-[600px] h-[600px] bg-violet-600/10 rounded-full blur-[120px] pointer-events-none" />
+      {/* Category Tabs Row with FIX 2 Edit/Delete Actions */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm">
+        <div className="flex items-center gap-2 overflow-x-auto max-w-full pb-1 sm:pb-0">
+          <button
+            onClick={() => setSelectedCategoryId(null)}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              selectedCategoryId === null
+                ? "bg-brand-600 text-white shadow-sm"
+                : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900"
+            }`}
+          >
+            All Categories ({items.length})
+          </button>
 
-        {/* Left: Category Sidebar (20%) */}
-        <div className="w-1/5 min-w-[260px] max-w-[320px] shrink-0 overflow-hidden border-r border-white/10 bg-[#0F141F] z-10">
-          <CategorySidebar
-            categories={categories}
-            selectedCategoryId={selectedCategoryId}
-            onSelect={setSelectedCategoryId}
-            onCreate={handleCreateCategory}
-            onRename={handleRenameCategory}
-            onDelete={handleDeleteCategory}
-            onToggleVisible={handleToggleCategoryVisible}
-            onReorder={handleReorderCategories}
-          />
+          {categories.map((cat) => {
+            const isSelected = selectedCategoryId === cat.id;
+            const count = items.filter((i) => i.categoryId === cat.id).length;
+
+            return (
+              <div
+                key={cat.id}
+                className={`group flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  isSelected
+                    ? "bg-brand-600 text-white shadow-sm"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                }`}
+                onClick={() => setSelectedCategoryId(cat.id)}
+              >
+                <span>{cat.name} ({count})</span>
+                
+                {/* Category Hover Actions (Edit & Delete) */}
+                <div className="hidden group-hover:flex items-center gap-1 border-l border-white/20 pl-1.5 ml-1">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingCategory(cat);
+                      setCategoryName(cat.name);
+                      setCategorySortOrder(cat.displayOrder || 1);
+                      setCategoryIsVisible(cat.isVisible ?? true);
+                      setIsCategoryModalOpen(true);
+                    }}
+                    className="hover:text-amber-300"
+                    title="Rename Category"
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteCategory(cat);
+                    }}
+                    className="hover:text-red-300"
+                    title="Delete Category"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        {/* Center: Items Panel (45%) */}
-        <div className="flex-1 overflow-y-auto relative z-10">
-          {/* Panel header */}
-          <div className="sticky top-0 z-10 bg-[#0A0D14]/80 backdrop-blur-xl border-b border-white/5 px-8 py-5 flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-white tracking-tight">
-                {selectedCategoryId
-                  ? categories.find((c) => c.id === selectedCategoryId)?.name || "Items"
-                  : "All Items"}
-              </h2>
-              <p className="text-sm text-slate-400 mt-1">
-                {filteredItems.length} item{filteredItems.length !== 1 ? "s" : ""}
-                {searchQuery && <span className="text-violet-400"> matching "{searchQuery}"</span>}
-              </p>
-            </div>
-            <button
-              onClick={handleAddItem}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-violet-300 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 rounded-xl transition-all"
-            >
-              <Plus size={16} /> New Item
-            </button>
-          </div>
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <Button variant="ghost" size="sm" onClick={() => handleBulkToggle(true)} className="text-emerald-600 text-xs">
+            Enable All
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => handleBulkToggle(false)} className="text-red-600 text-xs">
+            Disable All
+          </Button>
+        </div>
+      </div>
 
-          {/* Items grid */}
-          <div className="p-8">
-            {isLoading ? (
-              <div className="grid grid-cols-2 xl:grid-cols-3 gap-6">
-                {Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={i} />)}
-              </div>
-            ) : filteredItems.length === 0 ? (
-              <EmptyState
-                categorySelected={!!selectedCategoryId}
-                onAdd={handleAddItem}
-              />
-            ) : (
-              <div className="grid grid-cols-2 xl:grid-cols-3 gap-6">
-                {filteredItems.map((item) => (
-                  <ItemCard
-                    key={item.id}
-                    item={item}
-                    isSelected={selectedItem?.id === item.id}
-                    onSelect={() => handleSelectItem(item)}
-                    onToggleAvailability={(v) => handleToggleAvailability(item, v)}
-                    onDelete={() => handleDeleteItem(item)}
-                    onDuplicate={() => handleDuplicateItem(item)}
-                    onDragStart={() => setDragItem(item.id)}
-                    onDragOver={(e) => { e.preventDefault(); setDragOverItem(item.id); }}
-                    onDrop={() => handleItemDrop(item.id)}
-                    onDragEnd={() => { setDragItem(null); setDragOverItem(null); }}
+      {/* 4 STATES MANDATORY IMPLEMENTATION */}
+      {isError && (
+        <ErrorState title="Menu Load Error" message="Database catalog request failed." onRetry={loadMenuData} />
+      )}
+
+      {isLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-44 w-full rounded-2xl" />
+          ))}
+        </div>
+      ) : filteredItems.length === 0 ? (
+        <EmptyState
+          icon={<UtensilsCrossed className="h-8 w-8 text-brand-600" />}
+          title="No Items Found in this Category"
+          description="Create a new menu item to show in customer WhatsApp interactive menu."
+          actionLabel="Add Item"
+          onAction={() => {
+            setIsNewItem(true);
+            setIsModalOpen(true);
+          }}
+        />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredItems.map((item) => (
+            <Card key={item.id} className="space-y-3 relative p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2.5">
+                  {item.vegType === "veg" ? (
+                    <span className="p-1 rounded-md border border-emerald-500 text-emerald-500 mt-0.5" title="Vegetarian">
+                      <Leaf className="h-3.5 w-3.5" />
+                    </span>
+                  ) : (
+                    <span className="p-1 rounded-md border border-red-500 text-red-500 mt-0.5" title="Non-Veg">
+                      <Drumstick className="h-3.5 w-3.5" />
+                    </span>
+                  )}
+
+                  <div>
+                    <h3 className="font-heading font-bold text-base text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                      <span>{item.name}</span>
+                      {item.isPopular && <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-1 mt-0.5">
+                      {item.description || "No description added."}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => handleToggleAvailability(item, item.isAvailable)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    item.isAvailable ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-700"
+                  }`}
+                  title={item.isAvailable ? "Mark Out of Stock" : "Mark Available"}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      item.isAvailable ? "translate-x-5" : "translate-x-0"
+                    }`}
                   />
-                ))}
+                </button>
               </div>
-            )}
-          </div>
-        </div>
 
-        {/* Right: Item Editor (35%) */}
-        {isEditorOpen && (
-          <div className="w-[35%] min-w-[360px] max-w-[500px] shrink-0 overflow-hidden border-l border-white/10 bg-[#0F141F] shadow-[-20px_0_40px_rgba(0,0,0,0.5)] z-20">
-            <ItemEditor
-              item={selectedItem}
-              isNew={isNewItem}
-              categories={categories}
-              onSave={handleSaveItem}
-              onClose={handleCloseEditor}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-xs font-semibold">
+                <span className="text-slate-500 dark:text-slate-400">Base Price:</span>
+                <span className="font-heading font-extrabold text-sm text-slate-900 dark:text-slate-100">
+                  ₹{item.basePrice}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+                <Badge variant={item.isAvailable ? "success" : "neutral"} size="sm">
+                  {item.isAvailable ? "Available" : "Hidden"}
+                </Badge>
+
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setIsNewItem(false);
+                      setEditingItem(item);
+                      setFormData({
+                        name: item.name,
+                        basePrice: item.basePrice,
+                        categoryId: item.categoryId || "",
+                        description: item.description || "",
+                        vegType: item.vegType as any,
+                        isPopular: item.isPopular,
+                        variants: item.variants?.map((v) => ({ variantName: v.variantName, price: v.price })) || [],
+                      });
+                      setIsModalOpen(true);
+                    }}
+                    className="p-1.5"
+                  >
+                    <Edit2 className="h-4 w-4 text-slate-500" />
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => handleDeleteItem(item.id, item.name)} className="p-1.5 text-red-500">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* FIX 2: Add / Edit Category Modal */}
+      <Modal
+        isOpen={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
+        title={editingCategory ? `Rename Category: ${editingCategory.name}` : "Create New Menu Category"}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setIsCategoryModalOpen(false)}>Cancel</Button>
+            <Button variant="primary" onClick={handleSaveCategory} isLoading={isSavingCategory}>
+              {editingCategory ? "Save Changes" : "Create Category"}
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={handleSaveCategory} className="space-y-4 text-xs">
+          <Input
+            label="Category Name"
+            placeholder="e.g. Starters, Main Course, Beverages"
+            value={categoryName}
+            onChange={(e) => setCategoryName(e.target.value)}
+            required
+          />
+
+          <Input
+            label="Sort / Display Order"
+            type="number"
+            value={categorySortOrder}
+            onChange={(e) => setCategorySortOrder(Number(e.target.value))}
+            required
+          />
+
+          <div className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
+            <div>
+              <span className="font-bold text-slate-900 dark:text-slate-100 block">Category Visible</span>
+              <span className="text-slate-500 text-[11px]">Show category in customer WhatsApp menu</span>
+            </div>
+            <input
+              type="checkbox"
+              checked={categoryIsVisible}
+              onChange={(e) => setCategoryIsVisible(e.target.checked)}
+              className="rounded text-brand-600 focus:ring-brand-500 h-4 w-4"
             />
           </div>
-        )}
-      </div>
+        </form>
+      </Modal>
+
+      {/* Item Editor Modal */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={isNewItem ? "Create Menu Item" : `Edit Item: ${editingItem?.name}`}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+            <Button variant="primary" onClick={handleSaveItem}>Save Menu Item</Button>
+          </>
+        }
+      >
+        <form onSubmit={handleSaveItem} className="space-y-4 text-xs">
+          <Input
+            label="Item Name"
+            placeholder="e.g. Butter Chicken Special"
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            required
+          />
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Base Price (₹)"
+              type="number"
+              value={formData.basePrice}
+              onChange={(e) => setFormData({ ...formData, basePrice: Number(e.target.value) })}
+              required
+            />
+            <Select
+              label="Category"
+              value={formData.categoryId}
+              onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
+              options={categories.map((c) => ({ value: c.id, label: c.name }))}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="font-semibold text-slate-700 dark:text-slate-300">Description</label>
+            <textarea
+              rows={2}
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+          </div>
+        </form>
+      </Modal>
+
+      {/* Customer WhatsApp Interactive Preview Modal */}
+      <Modal
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        title="WhatsApp Customer View Preview"
+      >
+        <div className="p-4 rounded-2xl bg-slate-900 text-slate-100 space-y-4 max-w-sm mx-auto shadow-2xl border border-slate-800 font-mono text-xs">
+          <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700 text-emerald-400 font-bold flex items-center gap-2">
+            <Smartphone className="h-4 w-4" />
+            <span>Restroex WhatsApp Bot</span>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-800 text-slate-200 leading-relaxed whitespace-pre-wrap">
+            {"🍽️ *Restroex Menu*\n\n1. Butter Chicken — ₹280\n2. Dal Makhani — ₹220\n3. Garlic Naan — ₹50\n\nReply with item number or quantity to add to cart."}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
