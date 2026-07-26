@@ -6,6 +6,7 @@ export enum QueueName {
   AI_PROCESSING = 'ai-processing',
   NOTIFICATIONS = 'notifications',
   PAYMENT_RECONCILIATION = 'payment-reconciliation',
+  PAYMENT_ANALYSIS = 'payment-analysis',
   ORDER_EVENTS = 'order-events',
 }
 

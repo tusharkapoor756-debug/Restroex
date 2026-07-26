@@ -11,9 +11,10 @@ export class ReplyBuilder {
   ): { text: string; optionsMap: Array<{ key: string; payload: any }> } {
     let body = '';
 
-    // Header
+    // Header Title Card
     if (screen.title) {
-      body += `*${screen.title}*\n\n`;
+      body += `🍽️ *${screen.title}*\n`;
+      body += `━━━━━━━━━━━━━━\n\n`;
     }
 
     body += screen.body;
@@ -22,32 +23,36 @@ export class ReplyBuilder {
     const optionsMap: Array<{ key: string; payload: any }> = [];
     let optionCounter = 1;
 
-    // Add buttons as numbered selections
+    // Add buttons as numbered card options
     if (screen.buttons && screen.buttons.length > 0) {
-      body += `*Options:*\n`;
       for (const btn of screen.buttons) {
         try {
           const payloadObj = JSON.parse(btn.id);
-          body += `[${optionCounter}] ${btn.title}\n`;
-          optionsMap.push({
-            key: optionCounter.toString(),
-            payload: payloadObj,
-          });
-          optionsMap.push({
-            key: btn.title.toLowerCase().trim(),
-            payload: payloadObj,
-          });
-          optionCounter++;
+          if (btn.title !== 'context_holder') {
+            body += `【${optionCounter}】 *${btn.title}*\n`;
+            optionsMap.push({
+              key: optionCounter.toString(),
+              payload: payloadObj,
+            });
+            optionsMap.push({
+              key: btn.title.toLowerCase().trim(),
+              payload: payloadObj,
+            });
+            optionCounter++;
+          } else {
+            optionsMap.push({
+              key: 'context_holder',
+              payload: payloadObj,
+            });
+          }
         } catch (e) {
           // Fallback if not valid JSON
         }
       }
-      body += '\n';
     }
 
-    // Add list items as numbered selections
+    // Add list items as numbered card options
     if (screen.list && screen.list.sections) {
-      body += `*${screen.list.buttonTitle || 'Select an option'}:*\n`;
       for (const section of screen.list.sections) {
         if (section.title) {
           body += `\n_${section.title}_\n`;
@@ -55,9 +60,9 @@ export class ReplyBuilder {
         for (const row of section.rows) {
           try {
             const payloadObj = JSON.parse(row.id);
-            body += `${optionCounter}. ${row.title}`;
+            body += `【${optionCounter}】 *${row.title}*`;
             if (row.description) {
-              body += ` - _${row.description}_`;
+              body += `\n   _${row.description}_`;
             }
             body += '\n';
 
@@ -77,11 +82,10 @@ export class ReplyBuilder {
       }
     }
 
-    // Standard Navigation Helper if navigation stack has previous elements
+    // Back Navigation Card Option
     if (screen.previousScreenId) {
-      // We can append Back navigation option
       const backPayload = { a: 'back' };
-      body += `\n[B] ↩️ Go Back\n`;
+      body += `\n【B】 ⬅️ *Back*\n`;
       optionsMap.push({
         key: 'b',
         payload: backPayload,
@@ -92,7 +96,11 @@ export class ReplyBuilder {
       });
     }
 
-    body += '\n━━━━━━━━━━━━━━━━━━\n✨ Reply with the option number or type the option name.';
+    if (!screen.inputPrompt) {
+      body += `━━━━━━━━━━━━━━\n👇 *Reply with the number shown next to your choice.*`;
+    } else {
+      body += `━━━━━━━━━━━━━━`;
+    }
 
     return {
       text: body,

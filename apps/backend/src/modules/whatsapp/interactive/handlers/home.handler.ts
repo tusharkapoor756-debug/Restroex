@@ -1,79 +1,69 @@
 import { InteractiveScreen } from '../interactive-action.types';
 import { WhatsAppConfigRepository } from '../../../restaurants/repositories/whatsapp-config.repository';
+import { CartService } from '../../../conversations/services/cart.service';
 
 export class InteractiveHomeHandler {
   private configRepo = new WhatsAppConfigRepository();
+  private cartService = new CartService();
 
-  public async render(restaurantId: string, restaurantName: string): Promise<InteractiveScreen> {
+  public async render(restaurantId: string, restaurantName: string, customerPhone?: string): Promise<InteractiveScreen> {
     const config = await this.configRepo.getByRestaurantId(restaurantId);
     
-    const bodyLines = [
-      `🙏 Namaste! Welcome to *${restaurantName}*.`,
-      'Aapka swagat hai! Hum aapka order lene ke liye ready hain.',
-      '',
-      'Kripya neeche diye gaye menu options me se select karein ya type karke order karein.'
-    ];
-
+    let cartNotice = '';
     const buttons: Array<{ id: string; title: string }> = [];
-    const listRows: Array<{ id: string; title: string; description?: string }> = [];
 
-    // Map configuration items to titles & payloads
-    for (const item of config.homeScreenItems) {
-      if (item === 'browse_menu') {
-        listRows.push({
-          id: JSON.stringify({ a: 'browse', p: 1 }),
-          title: '🍽️ Browse Menu',
-          description: 'Explore full menu dynamically',
-        });
-      } else if (item === 'best_sellers') {
-        listRows.push({
-          id: JSON.stringify({ a: 'best_sellers' }),
-          title: '🔥 Best Sellers',
-          description: 'Chef recommended & popular dishes',
-        });
-      } else if (item === 'offers') {
-        listRows.push({
-          id: JSON.stringify({ a: 'offers' }),
-          title: '🎁 Today\'s Offers',
-          description: 'Exciting discounts and deals',
-        });
-      } else if (item === 'track_order') {
-        listRows.push({
-          id: JSON.stringify({ a: 'track_order' }),
-          title: '📦 Track Order',
-          description: 'Check status of your active order',
-        });
-      } else if (item === 'talk_to_staff') {
-        listRows.push({
-          id: JSON.stringify({ a: 'talk_to_staff' }),
-          title: '☎️ Talk to Staff',
-          description: 'Connect with a restaurant agent',
+    // Check if active cart exists for customer
+    if (customerPhone) {
+      const activeCart = await this.cartService.getActiveCart(restaurantId, customerPhone).catch(() => null);
+      if (activeCart && activeCart.items && activeCart.items.length > 0) {
+        const totalCount = activeCart.items.reduce((sum: number, item: any) => sum + item.quantity, 0);
+        const totalPrice = activeCart.items.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0);
+        cartNotice = `🛒 *Cart Active:* ${totalCount} item(s) (₹${totalPrice})\n\n`;
+
+        // Inject high priority cart action as option 1
+        buttons.push({
+          id: JSON.stringify({ a: 'cart_view' }),
+          title: '🛒 View Cart',
         });
       }
     }
 
-    // First 3 items as buttons for quick access, rest in list
-    const buttonItems = listRows.slice(0, 3);
-    const remainingItems = listRows.slice(3);
+    const bodyLines = [
+      `Welcome to *${restaurantName}*`,
+      '',
+      cartNotice ? cartNotice : 'Select an option to get started:'
+    ];
 
-    for (const item of buttonItems) {
-      buttons.push({
-        id: item.id,
-        title: item.title.split(' ').slice(1).join(' '), // Strip emoji for buttons
-      });
-    }
+    // Add configured items as clean UI card buttons
+    for (const item of config.homeScreenItems) {
+      if (buttons.length >= 6) break; // Keep home options crisp
 
-    let list: InteractiveScreen['list'] = undefined;
-    if (remainingItems.length > 0) {
-      list = {
-        buttonTitle: 'More Options',
-        sections: [
-          {
-            title: 'Menu Options',
-            rows: remainingItems,
-          },
-        ],
-      };
+      if (item === 'browse_menu') {
+        buttons.push({
+          id: JSON.stringify({ a: 'browse', p: 1 }),
+          title: '🍕 Explore Menu',
+        });
+      } else if (item === 'best_sellers') {
+        buttons.push({
+          id: JSON.stringify({ a: 'best_sellers' }),
+          title: '⭐ Popular Picks',
+        });
+      } else if (item === 'offers') {
+        buttons.push({
+          id: JSON.stringify({ a: 'offers' }),
+          title: '🔥 Hot Deals',
+        });
+      } else if (item === 'track_order') {
+        buttons.push({
+          id: JSON.stringify({ a: 'track_order' }),
+          title: '📦 Track Order',
+        });
+      } else if (item === 'talk_to_staff') {
+        buttons.push({
+          id: JSON.stringify({ a: 'talk_to_staff' }),
+          title: '💬 Need Help',
+        });
+      }
     }
 
     return {
@@ -81,7 +71,6 @@ export class InteractiveHomeHandler {
       title: restaurantName,
       body: bodyLines.join('\n'),
       buttons,
-      list,
     };
   }
 }

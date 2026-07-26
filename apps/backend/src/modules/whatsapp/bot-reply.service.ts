@@ -1,4 +1,5 @@
 import { SessionService } from '../conversations/session.service';
+import { SessionRepository } from '../conversations/repositories/session.repository';
 import { VariantHandler } from './handlers/variant.handler';
 import { RestaurantRepository } from '../restaurants/repositories/restaurant.repository';
 import { GreetingHandler } from './handlers/greeting.handler';
@@ -44,6 +45,7 @@ export class WhatsAppBotReplyService {
   private readonly greetingHandler: GreetingHandler;
   private readonly variantHandler: VariantHandler;
   private readonly sessionService: SessionService;
+  private readonly sessionRepository: SessionRepository;
   private readonly whatsappConfigRepo: WhatsAppConfigRepository;
 
   constructor() {
@@ -55,6 +57,7 @@ export class WhatsAppBotReplyService {
     this.greetingHandler = new GreetingHandler();
     this.variantHandler = new VariantHandler();
     this.sessionService = new SessionService();
+    this.sessionRepository = new SessionRepository();
     this.whatsappConfigRepo = new WhatsAppConfigRepository();
   }
 
@@ -136,6 +139,24 @@ export class WhatsAppBotReplyService {
       }
 
       logger.info({ state: session.state }, 'Current Conversation State');
+
+      // ─────────────────────────────────────────────────────────────────────
+      // LAYER -0.5 — Human Takeover Management
+      // ─────────────────────────────────────────────────────────────────────
+      if (session.state === ConversationState.HUMAN_TAKEOVER) {
+        // If customer explicitly clicks a menu/interactive button, resume automated bot flow
+        if (payload.interactivePayload || (await interactiveOrderingService.matchTextToInteractiveOption(restaurantId, customerPhone, text))) {
+          logger.info({ customerPhone }, 'Customer selected an ordering action. Resuming bot from HUMAN_TAKEOVER.');
+          await this.sessionService.executeSessionAction(restaurantId, customerPhone, async () => ({
+            event: { name: 'RESET' }
+          }));
+          session = await this.sessionService.getSession(restaurantId, customerPhone);
+        } else {
+          // Keep human takeover active for free-form customer staff conversations
+          logger.info({ customerPhone }, 'Human Takeover active — skipping automated bot response.');
+          return;
+        }
+      }
 
       // ─────────────────────────────────────────────────────────────────────
       // LAYER 0 — Payment screenshot handling (state-locked, must run first)
@@ -495,6 +516,19 @@ export class WhatsAppBotReplyService {
           '2️⃣ *Start a New Order*',
         ].join('\n');
 
+        // Persist recovery screen options map so pressing 1 or 2 routes cleanly to checkout or cart clear
+        await this.sessionRepository.patchContext(restaurantId, customerPhone, {
+          lastInteractiveScreen: {
+            id: 'recovery_prompt',
+            options: [
+              { key: '1', payload: { a: 'checkout' } },
+              { key: 'continue previous order', payload: { a: 'checkout' } },
+              { key: '2', payload: { a: 'cart_clear' } },
+              { key: 'start a new order', payload: { a: 'cart_clear' } },
+            ],
+          },
+        });
+
         await this.messages.sendText(restaurantId, customerPhone, recoveryMsg);
         return;
       }
@@ -534,14 +568,18 @@ export class WhatsAppBotReplyService {
           return;
         }
 
-        // 1D. Interactive-only mode: block all unmatched free text
+        // 1D. Interactive-only mode / unmatched text: show validation & re-render active screen
         if (config.orderingMode === 'interactive_only') {
+          const session = await this.sessionService.getSession(restaurantId, customerPhone);
+          const lastScreen = session.context.lastInteractiveScreen;
+          const currentPayload = lastScreen?.options?.[0]?.payload || { a: 'home' };
+
           await this.messages.sendText(
             restaurantId,
             customerPhone,
-            '⚠️ Please select an option from the menu buttons/list below to continue ordering.'
+            '⚠️ *Invalid choice.* Please select one of the numbered options below.'
           );
-          await interactiveOrderingService.handleInteractiveClick(restaurantId, customerPhone, { a: 'home' });
+          await interactiveOrderingService.handleInteractiveClick(restaurantId, customerPhone, currentPayload);
           return;
         }
       }

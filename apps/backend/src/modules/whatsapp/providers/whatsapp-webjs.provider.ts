@@ -105,7 +105,7 @@ export class WhatsAppWebJsProvider implements WhatsAppProvider {
     }
 
     session.lastSendAt = Date.now();
-    
+
     if (payload.mediaUrl) {
       const { MessageMedia } = await this.loadWebJs();
       const media = await MessageMedia.fromUrl(payload.mediaUrl, { unsafeMime: true });
@@ -576,7 +576,7 @@ export class WhatsAppWebJsProvider implements WhatsAppProvider {
       for (let attempt = 1; attempt <= MAX_DOWNLOAD_RETRIES; attempt++) {
         try {
           logger.info({ messageId, attempt }, 'downloadMedia started');
-          
+
           let targetMessage = message;
           // In whatsapp-web.js, if execution context is destroyed or message object binding is lost,
           // fetching message via client.getMessageById or re-evaluating message.downloadMedia can resolve the context.
@@ -752,7 +752,7 @@ export class WhatsAppWebJsProvider implements WhatsAppProvider {
   private async loadWebJs(): Promise<any> {
     const packageName = 'whatsapp-web.js';
     const module = await import(packageName);
-    
+
     const MessageClass = module.Message || module.default?.Message;
     if (MessageClass && MessageClass.prototype) {
       // 1. Patch _patch to ensure id._serialized is populated from id.$1 if needed
@@ -791,7 +791,7 @@ export class WhatsAppWebJsProvider implements WhatsAppProvider {
             const win = globalThis as any;
             const MsgCollection = win.require('WAWebCollections').Msg;
             let msg = MsgCollection.get(msgId);
-            
+
             if (!msg && rawIdObj) {
               const fallbackId = rawIdObj._serialized || rawIdObj.$1;
               if (fallbackId) {

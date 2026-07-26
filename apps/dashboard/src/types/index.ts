@@ -304,6 +304,7 @@ export interface RestaurantSettingsConfig {
   upiQrImageUrl?: string;
   codEnabled: boolean;
   manualUpiEnabled: boolean;
+  onlinePaymentsEnabled: boolean;
   // Store Settings
   pickupAvailable: boolean;
   prepTime: number;
@@ -354,6 +355,7 @@ export interface UpdateSettingsPayload {
   upiQrImageUrl?: string;
   codEnabled?: boolean;
   manualUpiEnabled?: boolean;
+  onlinePaymentsEnabled?: boolean;
   // Store Settings
   pickupAvailable?: boolean;
   prepTime?: number;
@@ -430,4 +432,51 @@ export interface Payment {
   failedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export type GatewayConfigStatus =
+  | 'connected'
+  | 'not_connected'
+  | 'configuration_error'
+  | 'invalid_credentials'
+  | 'webhook_missing'
+  | 'provider_offline';
+
+export interface RestaurantPaymentConfig {
+  id: string;
+  restaurantId: string;
+  providerName: string;
+  isEnabled: boolean;
+  isSandbox: boolean;
+  credentials: Record<string, any>;
+  status: GatewayConfigStatus;
+  statusMessage?: string | null;
+  lastHealthCheckAt?: string | null;
+  lastHealthCheckResponse?: Record<string, any> | null;
+  webhookSecret?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SaveProviderConfigPayload {
+  restaurantId: string;
+  providerName: string;
+  credentials: Record<string, any>;
+  isEnabled: boolean;
+  isSandbox: boolean;
+  webhookSecret?: string;
+}
+
+export interface TestGatewayPayload {
+  restaurantId: string;
+  providerName: string;
+  credentials?: Record<string, any>;
+}
+
+export interface ProviderHealthCheckResult {
+  isHealthy: boolean;
+  status: GatewayConfigStatus;
+  message: string;
+  latencyMs?: number;
+  details?: Record<string, any>;
 }

@@ -2,6 +2,7 @@ import { InteractiveScreen } from '../interactive-action.types';
 import { SessionService } from '../../../conversations/session.service';
 import { db } from '../../../../infrastructure/database/database.client';
 import { CartManager } from '../../../conversations/cart.manager';
+import { logger } from '../../../../infrastructure/logger/logger';
 
 export class InteractiveCartHandler {
   private sessionService = new SessionService();
@@ -44,6 +45,10 @@ export class InteractiveCartHandler {
       displayName = item.name;
     }
 
+    // Check if cart already has items
+    const existingSession = await this.sessionService.getSession(restaurantId, customerPhone);
+    const existingCount = existingSession.cart.items?.reduce((acc, item) => acc + item.quantity, 0) || 0;
+
     // 2. Perform FSM action to add item
     await this.sessionService.executeSessionAction(
       restaurantId,
@@ -61,12 +66,17 @@ export class InteractiveCartHandler {
       })
     );
 
-    return `✅ Added ${quantity} x *${displayName}* to your cart.`;
+    const existingNotice = existingCount > 0 
+      ? `\n\nℹ️ _Note: You already had ${existingCount} item(s) in your cart._` 
+      : '';
+
+    return `✅ Added ${quantity} x *${displayName}* to your cart.${existingNotice}`;
   }
 
   public async renderCart(restaurantId: string, customerPhone: string): Promise<InteractiveScreen> {
     const session = await this.sessionService.getSession(restaurantId, customerPhone);
     const cart = session.cart;
+    logger.info({ point: 6, renderCartItems: cart.items }, '🔍 [DIAGNOSTIC 6] cart returned by renderCart()');
 
     if (!cart.items || cart.items.length === 0) {
       return {
@@ -97,30 +107,37 @@ export class InteractiveCartHandler {
       variants = data || [];
     }
 
-    let body = '🛒 *Your Order Summary:*\n\n';
+    let body = '';
     let total = 0;
 
-    cart.items.forEach((item, index) => {
+    cart.items.forEach((item) => {
       const dbItem = menuItems?.find((m) => m.id === item.menuItemId);
       const dbVariant = variants.find((v) => v.id === item.variantId);
-      const name = dbVariant 
-        ? `${dbItem?.name || 'Item'} (${dbVariant.variant_name})`
-        : (dbItem?.name || 'Item');
       
+      const itemNameFormatted = dbItem?.name 
+        ? dbItem.name.replace(/\b\w/g, (c: string) => c.toUpperCase())
+        : 'Item';
+
+      const variantNameFormatted = dbVariant?.variant_name
+        ? ` (${dbVariant.variant_name.replace(/\b\w/g, (c: string) => c.toUpperCase())})`
+        : '';
+
+      const displayName = `${itemNameFormatted}${variantNameFormatted}`;
       const itemTotal = item.quantity * item.unitPrice;
       total += itemTotal;
-      body += `${index + 1}. *${name}* x ${item.quantity} = ₹${itemTotal}\n`;
+
+      body += `${displayName}\nQty: ${item.quantity} × ₹${item.unitPrice}\n\n`;
     });
 
-    body += `\n*Grand Total: ₹${total}*`;
+    body += `━━━━━━━━━━━━━━\n\n💵 *Total*\n\n₹${total}`;
 
     return {
       id: 'cart_view',
-      title: 'Your Cart',
+      title: '🛒 *Your Cart*',
       body,
       buttons: [
         { id: JSON.stringify({ a: 'checkout' }), title: 'Proceed to Checkout' },
-        { id: JSON.stringify({ a: 'browse', p: 1 }), title: '🍽️ Add More Items' },
+        { id: JSON.stringify({ a: 'browse', p: 1 }), title: 'Add More Items' },
         { id: JSON.stringify({ a: 'cart_clear' }), title: 'Clear Cart' },
       ],
       previousScreenId: 'home',

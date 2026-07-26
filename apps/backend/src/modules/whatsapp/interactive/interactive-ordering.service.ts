@@ -49,8 +49,8 @@ export class InteractiveOrderingService {
 
       // 4. Send message
       await this.messageService.sendText(restaurantId, customerPhone, text);
-    } catch (error) {
-      logger.error({ error, restaurantId, customerPhone }, 'Interactive message processing failed');
+    } catch (error: any) {
+      logger.error({ error, message: error?.message, stack: error?.stack, restaurantId, customerPhone }, 'Interactive message processing failed');
       await this.messageService.sendText(
         restaurantId,
         customerPhone,
@@ -72,32 +72,67 @@ export class InteractiveOrderingService {
       const session = await this.sessionService.getSession(restaurantId, customerPhone);
       const lastScreen = session.context.lastInteractiveScreen;
 
-      if (!lastScreen || !lastScreen.options) {
+      if (!lastScreen) {
         return null;
       }
 
       const cleanText = text.trim().toLowerCase();
 
+      // ─────────────────────────────────────────────────────────────────────
+      // SCREEN TYPE A — Quantity Input Prompt Screen
+      // ─────────────────────────────────────────────────────────────────────
+      if (lastScreen.id && lastScreen.id.startsWith('quantity_prompt_')) {
+        // Only allow Back option if explicitly on the current screen's options
+        const backMatch = lastScreen.options?.find((opt: any) => opt.key === cleanText && (opt.key === 'b' || opt.key === 'back'));
+        if (backMatch) {
+          return backMatch.payload as CompactPayload;
+        }
+
+        // Validate positive whole integer input for Quantity Prompt screen
+        const parsedQty = parseInt(cleanText, 10);
+        const isValidInteger = /^\d+$/.test(cleanText) && !isNaN(parsedQty) && parsedQty > 0;
+
+        if (isValidInteger) {
+          // Extract context from current screen's optionsMap context_holder
+          const contextHolder = lastScreen.options?.find((opt: any) => opt.key === 'context_holder');
+          const itemPayload = contextHolder?.payload || lastScreen.options?.[0]?.payload || {};
+          const itemId = itemPayload.id || lastScreen.id.replace('quantity_prompt_', '');
+          const variantId = itemPayload.vid;
+
+          logger.info({ itemId, variantId, qty: parsedQty }, '🔢 Quantity input matched for current active screen');
+          return {
+            a: 'quantity',
+            id: itemId,
+            vid: variantId,
+            q: parsedQty,
+          };
+        } else {
+          // Validation failed on Quantity screen — return invalid_quantity to re-render Quantity prompt
+          logger.warn({ text: cleanText }, '⚠️ Invalid input for quantity prompt screen');
+          return {
+            a: 'invalid_quantity',
+          };
+        }
+      }
+
+      // ─────────────────────────────────────────────────────────────────────
+      // SCREEN TYPE B — Option Screen (Numbered Cards / Buttons)
+      // ─────────────────────────────────────────────────────────────────────
+      if (!lastScreen.options || lastScreen.options.length === 0) {
+        return null;
+      }
+
+      // Strictly match text ONLY against current screen's registered optionsMap
       const matched = lastScreen.options.find(
-        (opt) => opt.key === cleanText
+        (opt: any) => opt.key === cleanText && opt.key !== 'context_holder'
       );
 
       if (matched) {
-        logger.info({ cleanText, matchedPayload: matched.payload }, '🎯 Text matched to interactive option');
+        logger.info({ cleanText, matchedPayload: matched.payload, screenId: lastScreen.id }, '🎯 Text matched to current active screen option');
         return matched.payload as CompactPayload;
       }
 
-      // Global shortcut keywords
-      if (['home', 'start', 'hi', 'hello', 'namaste'].includes(cleanText)) {
-        return { a: 'home' };
-      }
-      if (['cart', 'view cart', 'my cart'].includes(cleanText)) {
-        return { a: 'cart_view' };
-      }
-      if (['menu', 'browse'].includes(cleanText)) {
-        return { a: 'browse', p: 1 };
-      }
-
+      // Input does not belong to current active screen options
       return null;
     } catch (error) {
       logger.error({ error }, 'Failed to match text option to interactive payload');

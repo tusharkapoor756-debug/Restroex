@@ -3,6 +3,9 @@ import { PaymentStateMachine } from '../state-machine/payment.state-machine';
 import { PaymentProviderRegistry } from '../providers/payment-provider.registry';
 import { Payment, PaymentStatus, CreatePaymentDto } from '../types/payment.types';
 import { SettingsRepository } from '../../restaurants/repositories/settings.repository';
+import { PaymentEngineFacade } from '../engine/payment-engine.facade';
+import { PaymentAnalysisProducer } from '../engine/queue/payment-analysis.producer';
+import { PaymentAnalysisResult } from '../types/payment-analysis.types';
 import { logger } from '../../../infrastructure/logger/logger';
 
 export interface PaymentContext {
@@ -21,10 +24,19 @@ export interface PaymentContext {
 export class PaymentService {
   private readonly repository: PaymentRepository;
   private readonly settingsRepository: SettingsRepository;
+  private readonly engineFacade: PaymentEngineFacade;
+  private readonly analysisProducer: PaymentAnalysisProducer;
 
-  constructor() {
-    this.repository = new PaymentRepository();
-    this.settingsRepository = new SettingsRepository();
+  constructor(
+    repository?: PaymentRepository,
+    settingsRepository?: SettingsRepository,
+    engineFacade?: PaymentEngineFacade,
+    analysisProducer?: PaymentAnalysisProducer
+  ) {
+    this.repository = repository ?? new PaymentRepository();
+    this.settingsRepository = settingsRepository ?? new SettingsRepository();
+    this.engineFacade = engineFacade ?? new PaymentEngineFacade();
+    this.analysisProducer = analysisProducer ?? new PaymentAnalysisProducer();
   }
 
   // ----------------------------------------------------------
@@ -42,9 +54,21 @@ export class PaymentService {
       configured.push('cash');
     }
 
-    if (configured.length === 0) {
-      // Fallback default
-      configured.push('manual_upi');
+    // Include automated gateways if master onlinePaymentsEnabled is true
+    if (settings.settings.onlinePaymentsEnabled) {
+      try {
+        const { RestaurantPaymentConfigRepository } = require('../repositories/restaurant-payment-config.repository');
+        const configRepo = new RestaurantPaymentConfigRepository();
+        const gatewayConfigs = await configRepo.getAllByRestaurant(restaurantId);
+        
+        for (const cfg of gatewayConfigs) {
+          if (cfg.isEnabled && cfg.status !== 'invalid_credentials' && cfg.status !== 'configuration_error') {
+            configured.push(cfg.providerName);
+          }
+        }
+      } catch (err) {
+        logger.warn({ err, restaurantId }, 'Failed to fetch automated gateway configs during context resolution.');
+      }
     }
 
     // Only expose methods that have an active registered provider
@@ -55,7 +79,7 @@ export class PaymentService {
       availablePaymentMethods: configured,
       usablePaymentMethods: usable,
       upiId: settings.settings.upiId,
-      merchantName: settings.settings.upiMerchantName,
+      merchantName: settings.settings.upiMerchantName || settings.profile.name || settings.profile.ownerName,
       upiQrImageUrl: settings.settings.upiQrImageUrl,
     };
   }
@@ -76,16 +100,22 @@ export class PaymentService {
 
     // 2. Get the provider and let it initialise gateway data
     const provider = PaymentProviderRegistry.get(dto.paymentMethod);
-    const { gatewayData, initialStatus } = await provider.initiatePayment({
-      ...dto,
-      // Inject UPI details from settings for ManualUpiProvider
-      gatewayData: {
-        ...dto.gatewayData,
-        upi_id: context.upiId,
-        merchant_name: context.merchantName,
-        upi_qr_image_url: context.upiQrImageUrl,
-      },
-    });
+    let gatewayData = dto.gatewayData ?? {};
+    let initialStatus: 'pending' | 'initiated' = 'pending';
+
+    if (provider.initiatePayment) {
+      const res = await provider.initiatePayment({
+        ...dto,
+        gatewayData: {
+          ...dto.gatewayData,
+          upi_id: context.upiId,
+          merchant_name: context.merchantName,
+          upi_qr_image_url: context.upiQrImageUrl,
+        },
+      });
+      gatewayData = res.gatewayData;
+      initialStatus = res.initialStatus;
+    }
 
     // 3. Persist the payment record
     const payment = await this.repository.createPayment({
@@ -126,7 +156,33 @@ export class PaymentService {
     });
 
     logger.info({ paymentId }, '📸 Screenshot storage path saved.');
+
+    // Asynchronous non-blocking analysis pipeline (<100ms response time to client)
+    const context = await this.resolvePaymentContext(payment.restaurantId);
+    this.analysisProducer
+      .enqueueAnalysis({
+        paymentId: payment.id,
+        orderId: payment.orderId,
+        restaurantId: payment.restaurantId,
+        expectedAmount: payment.amount,
+        storagePath,
+        merchantUpiId: context.upiId,
+        merchantName: context.merchantName,
+        traceId: `trace_pay_${paymentId}`,
+        timestamp: new Date().toISOString(),
+      })
+      .catch((err) => {
+        logger.error({ err, paymentId }, 'Failed to enqueue payment analysis job');
+      });
+
     return updated;
+  }
+
+  public async analyzePayment(
+    paymentId: string,
+    imageBuffer?: Buffer
+  ): Promise<PaymentAnalysisResult> {
+    return this.engineFacade.analyzePaymentScreenshot(paymentId, imageBuffer);
   }
 
   public async markPendingVerification(paymentId: string): Promise<Payment> {

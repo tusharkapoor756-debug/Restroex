@@ -4,7 +4,7 @@ import { logger } from './infrastructure/logger/logger';
 import { db } from './infrastructure/database/database.client';
 import { redis } from './infrastructure/redis/redis.client';
 import { queueRegistry } from './infrastructure/queue';
-import { startWhatsAppIncomingWorker } from './infrastructure/queue/workers';
+import { startWhatsAppIncomingWorker, startPaymentAnalysisWorker } from './infrastructure/queue/workers';
 import { whatsappProviderFactory } from './modules/whatsapp/providers/whatsapp-provider.factory';
 
 const run = async () => {
@@ -19,6 +19,7 @@ const run = async () => {
   await redis.connect();
   await queueRegistry.initialize();
   startWhatsAppIncomingWorker();
+  startPaymentAnalysisWorker();
   await restoreWhatsAppSessions();
 
   const app = createApp();

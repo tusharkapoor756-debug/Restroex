@@ -15,6 +15,7 @@ export class InteractiveCheckoutHandler {
       title: 'Order Placed',
       body: textResult || '✅ Order placed successfully! We have received your order details.',
       buttons: [
+        { id: JSON.stringify({ a: 'cancel_order' }), title: '❌ Cancel Order' },
         { id: JSON.stringify({ a: 'home' }), title: '🏠 Back to Home' },
       ],
     };

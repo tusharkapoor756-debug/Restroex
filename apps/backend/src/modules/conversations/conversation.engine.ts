@@ -23,8 +23,10 @@ export class ConversationEngine {
     const currentState = session.state;
     const nextState = this.transitions.getNextState(currentState, event.name);
 
-    let updatedCart = { ...session.cart };
-    let updatedContext = { ...session.context };
+    let updatedCart: Cart = {
+      items: session.cart?.items ? JSON.parse(JSON.stringify(session.cart.items)) : [],
+    };
+    let updatedContext: SessionContext = session.context ? { ...session.context } : {};
 
     // Prevent modifying a session that is handed over to a human operator
     if (currentState === ConversationState.HUMAN_TAKEOVER && event.name !== 'RESET') {

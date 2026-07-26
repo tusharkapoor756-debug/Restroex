@@ -46,7 +46,7 @@ export class ScreenManager {
 
     switch (payload.a) {
       case 'home':
-        screen = await this.homeHandler.render(restaurantId, restaurantName);
+        screen = await this.homeHandler.render(restaurantId, restaurantName, customerPhone);
         await this.navigationHandler.clearStack(restaurantId, customerPhone);
         break;
 
@@ -84,12 +84,38 @@ export class ScreenManager {
         screen.body = `${addedMsg}\n\n${screen.body}`;
         break;
 
+      case 'invalid_quantity': {
+        const sessionSvc = new SessionService();
+        const session = await sessionSvc.getSession(restaurantId, customerPhone);
+        const lastScreen = session.context?.lastInteractiveScreen;
+        const itemPayload = lastScreen?.options?.[0]?.payload;
+
+        if (itemPayload && itemPayload.id && itemPayload.vid) {
+          screen = await this.browseHandler.renderVariantDetail(
+            restaurantId,
+            itemPayload.id,
+            itemPayload.vid
+          );
+        } else if (itemPayload && itemPayload.id) {
+          screen = await this.browseHandler.renderItemDetail(restaurantId, itemPayload.id);
+        } else {
+          screen = await this.homeHandler.render(restaurantId, restaurantName, customerPhone);
+        }
+
+        screen.body = `⚠️ *Please enter a valid quantity.*\n\n${screen.body}`;
+        break;
+      }
+
       case 'cart_view':
         screen = await this.cartHandler.renderCart(restaurantId, customerPhone);
         break;
 
       case 'cart_clear':
         const clearedMsg = await this.cartHandler.clearCart(restaurantId, customerPhone);
+        const sessionSvc = new SessionService();
+        await sessionSvc.executeSessionAction(restaurantId, customerPhone, async () => ({
+          event: { name: 'RESET' },
+        })).catch(() => {});
         screen = await this.cartHandler.renderCart(restaurantId, customerPhone);
         screen.body = `${clearedMsg}\n\n${screen.body}`;
         break;
@@ -97,6 +123,35 @@ export class ScreenManager {
       case 'checkout':
         screen = await this.checkoutHandler.execute(restaurantId, customerPhone);
         break;
+
+      case 'cancel_order': {
+        const sessionService = new SessionService();
+        const session = await sessionService.getSession(restaurantId, customerPhone);
+        const activeOrderId = session.context?.checkoutOrderId;
+
+        if (activeOrderId) {
+          try {
+            const { OrderService } = require('../../orders/services/order.service');
+            const orderService = new OrderService();
+            await orderService.transitionOrder(activeOrderId, 'cancelled');
+          } catch (err) {
+            // Ignore if order is already terminal
+          }
+        }
+
+        // Reset session state & cart
+        await sessionService.executeSessionAction(restaurantId, customerPhone, async () => ({
+          event: { name: 'RESET' },
+        }));
+
+        screen = {
+          id: 'order_cancelled',
+          title: 'Order Cancelled',
+          body: '🚫 *Your order has been cancelled.* You can start a fresh order anytime from the main menu.',
+          buttons: [{ id: JSON.stringify({ a: 'home' }), title: '🏠 Back to Home' }],
+        };
+        break;
+      }
 
       case 'best_sellers':
         screen = await this.recommendationHandler.renderBestSellers(restaurantId);

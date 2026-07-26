@@ -229,6 +229,10 @@ export class SettingsService {
       settings.manualUpiEnabled = !!dto.manualUpiEnabled;
     }
 
+    if (dto.onlinePaymentsEnabled !== undefined) {
+      settings.onlinePaymentsEnabled = !!dto.onlinePaymentsEnabled;
+    }
+
     return { profile, settings };
   }
 }

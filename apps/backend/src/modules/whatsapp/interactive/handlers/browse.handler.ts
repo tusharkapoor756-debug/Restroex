@@ -73,14 +73,14 @@ export class InteractiveBrowseHandler {
     const limit = 8;
     const offset = (page - 1) * limit;
 
-    // Fetch category name
+    // Fetch category name and icon
     const { data: category } = await this.client
       .from('categories')
-      .select('name')
+      .select('name, icon')
       .eq('id', categoryId)
       .single();
 
-    // Fetch menu items in category or subcategories
+    // Fetch menu items in category
     const { data: items, error } = await this.client
       .from('menu_items')
       .select('*')
@@ -103,20 +103,22 @@ export class InteractiveBrowseHandler {
 
     const hasMore = (count || 0) > page * limit;
     const categoryName = category?.name || 'Items';
+    const categoryIcon = category?.icon || '🥘';
     const body = items.length === 0 
       ? `No items found in *${categoryName}*.` 
-      : `Browse items under *${categoryName}*:`;
+      : `✨ *Choose an Option*`;
 
-    const rows = items.map((item: any) => {
-      const priceText = item.base_price !== null ? ` - ₹${item.base_price}` : '';
+    // Map item options with Title & Price on single line
+    const buttons: Array<{ id: string; title: string }> = items.map((item: any) => {
+      const priceVal = item.base_price !== null ? item.base_price : 0;
+      // Capitalize first letters for clean display
+      const formattedName = item.name.replace(/\b\w/g, (c: string) => c.toUpperCase());
       return {
         id: JSON.stringify({ a: 'item', id: item.id }),
-        title: `${item.veg_type === 'veg' ? '🟢' : '🔴'} ${item.name}`,
-        description: `${item.description || ''}${priceText}`.trim(),
+        title: `${formattedName} • ₹${priceVal}`,
       };
     });
 
-    const buttons: Array<{ id: string; title: string }> = [];
     if (page > 1) {
       buttons.push({
         id: JSON.stringify({ a: 'category', id: categoryId, p: page - 1 }),
@@ -132,13 +134,9 @@ export class InteractiveBrowseHandler {
 
     return {
       id: `category_${categoryId}_${page}`,
-      title: categoryName,
+      title: `${categoryIcon} *${categoryName}*`,
       body,
       buttons,
-      list: rows.length > 0 ? {
-        buttonTitle: 'Choose Item',
-        sections: [{ title: 'Dishes', rows }],
-      } : undefined,
       previousScreenId: JSON.stringify({ a: 'browse', p: 1 }),
     };
   }
@@ -158,52 +156,58 @@ export class InteractiveBrowseHandler {
 
     const hasVariants = item.menu_item_variants && item.menu_item_variants.length > 0;
     const vegBadge = item.veg_type === 'veg' ? '🟢 Veg' : '🔴 Non-Veg';
-    
-    let body = `*${item.name}* (${vegBadge})\n`;
-    if (item.description) {
-      body += `_${item.description}_\n`;
-    }
-    if (item.preparation_time) {
-      body += `⏱️ Prep Time: ${item.preparation_time} mins\n`;
-    }
-    body += '\n';
-
-    const buttons: Array<{ id: string; title: string }> = [];
+    const formattedItemName = item.name.replace(/\b\w/g, (c: string) => c.toUpperCase());
 
     if (hasVariants) {
-      body += `*Select a size / option below:*\n`;
-      item.menu_item_variants.forEach((v: any) => {
-        body += `- *${v.variant_name}*: ₹${v.price}\n`;
-      });
+      let bodyLines: string[] = [vegBadge];
+      if (item.preparation_time) {
+        bodyLines.push(`⏱️ ${item.preparation_time} mins`);
+      } else {
+        bodyLines.push(`⏱️ 15 mins`);
+      }
 
-      // Show top 3 variants as buttons
-      item.menu_item_variants.slice(0, 3).forEach((v: any) => {
+      const body = `${bodyLines.join('\n\n')}\n\n✨ *Choose an Option*`;
+
+      const buttons: Array<{ id: string; title: string }> = [];
+      item.menu_item_variants.forEach((v: any) => {
+        const formattedVariant = v.variant_name.replace(/\b\w/g, (c: string) => c.toUpperCase());
         buttons.push({
           id: JSON.stringify({ a: 'variant', id: item.id, vid: v.id }),
-          title: `${v.variant_name} (₹${v.price})`,
+          title: `${formattedVariant} • ₹${v.price}`,
         });
       });
-    } else {
-      body += `Price: *₹${item.base_price}*\n`;
-      
-      // Directly choose quantity
-      buttons.push({
-        id: JSON.stringify({ a: 'quantity', id: item.id, q: 1 }),
-        title: 'Add 1 to Cart',
-      });
-      buttons.push({
-        id: JSON.stringify({ a: 'quantity', id: item.id, q: 2 }),
-        title: 'Add 2 to Cart',
-      });
-    }
 
-    return {
-      id: `item_${itemId}`,
-      title: item.name,
-      body,
-      buttons,
-      previousScreenId: JSON.stringify({ a: 'category', id: item.category_id, p: 1 }),
-    };
+      return {
+        id: `item_${itemId}`,
+        title: formattedItemName,
+        body,
+        buttons,
+        previousScreenId: JSON.stringify({ a: 'category', id: item.category_id, p: 1 }),
+      };
+    } else {
+      // Direct Quantity Input Screen for items without variants
+      const body = `₹${item.base_price}\n\n📦 *Quantity*\n\nEnter the quantity.\n\nExamples:\n• 1\n• 2\n• 5`;
+      return {
+        id: `quantity_prompt_${itemId}`,
+        title: formattedItemName,
+        body,
+        inputPrompt: true,
+        buttons: [
+          {
+            id: JSON.stringify({ a: 'quantity', id: item.id }),
+            title: 'context_holder',
+          },
+        ],
+        previousScreenId: JSON.stringify({ a: 'category', id: item.category_id, p: 1 }),
+        metadata: {
+          pendingQuantityItem: {
+            id: item.id,
+            name: item.name,
+            price: item.base_price,
+          },
+        },
+      };
+    }
   }
 
   public async renderVariantDetail(restaurantId: string, itemId: string, variantId: string): Promise<InteractiveScreen> {
@@ -214,21 +218,32 @@ export class InteractiveBrowseHandler {
       throw new Error('Item or variant not found');
     }
 
-    const title = `${item.name} (${variant.variant_name})`;
-    const body = `*${title}*\nPrice: *₹${variant.price}*\n\nSelect quantity below to add to your order:`;
+    const formattedItemName = item.name.replace(/\b\w/g, (c: string) => c.toUpperCase());
+    const formattedVariantName = variant.variant_name.replace(/\b\w/g, (c: string) => c.toUpperCase());
 
-    const buttons = [
-      { id: JSON.stringify({ a: 'quantity', id: itemId, vid: variantId, q: 1 }), title: 'Add 1 to Cart' },
-      { id: JSON.stringify({ a: 'quantity', id: itemId, vid: variantId, q: 2 }), title: 'Add 2 to Cart' },
-      { id: JSON.stringify({ a: 'quantity', id: itemId, vid: variantId, q: 3 }), title: 'Add 3 to Cart' },
-    ];
+    const body = `${formattedVariantName} • ₹${variant.price}\n\n📦 *Quantity*\n\nEnter the quantity.\n\nExamples:\n• 1\n• 2\n• 5`;
 
     return {
-      id: `variant_${variantId}`,
-      title,
+      id: `quantity_prompt_${variantId}`,
+      title: formattedItemName,
       body,
-      buttons,
+      inputPrompt: true,
+      buttons: [
+        {
+          id: JSON.stringify({ a: 'quantity', id: itemId, vid: variantId }),
+          title: 'context_holder',
+        },
+      ],
       previousScreenId: JSON.stringify({ a: 'item', id: itemId }),
+      metadata: {
+        pendingQuantityItem: {
+          id: itemId,
+          vid: variantId,
+          name: item.name,
+          variantName: variant.variant_name,
+          price: variant.price,
+        },
+      },
     };
   }
 }

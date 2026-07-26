@@ -128,6 +128,7 @@ export default function SettingsPage() {
   // ── Payment ───────────────────────────────────────────────────────────────
   const [codEnabled, setCodEnabled] = useState(false);
   const [manualUpiEnabled, setManualUpiEnabled] = useState(true);
+  const [onlinePaymentsEnabled, setOnlinePaymentsEnabled] = useState(false);
   const [upiMerchantName, setUpiMerchantName] = useState("");
   const [upiId, setUpiId] = useState("");
   const [upiQrImageUrl, setUpiQrImageUrl] = useState("");
@@ -137,9 +138,48 @@ export default function SettingsPage() {
   const [prepTime, setPrepTime] = useState("15");
   const [pickupInstructions, setPickupInstructions] = useState("");
 
-  // ── Load settings ─────────────────────────────────────────────────────────
+  // ── Payment Orchestrator State ──────────────────────────────────────────────
+  const [gatewayConfigs, setGatewayConfigs] = useState<import("../../../types").RestaurantPaymentConfig[]>([]);
+  const [selectedProviderId, setSelectedProviderId] = useState<string>("razorpay");
+  const [isSandboxMode, setIsSandboxMode] = useState<boolean>(true);
+  const [isGwEnabled, setIsGwEnabled] = useState<boolean>(false); // Strict default: Disabled / Not Connected until loaded from DB
+  const [gwCredentials, setGwCredentials] = useState<Record<string, string>>({});
+  const [gwWebhookSecret, setGwWebhookSecret] = useState<string>("");
+  const [isTestingGw, setIsTestingGw] = useState<boolean>(false);
+  const [gwTestResult, setGwTestResult] = useState<{ isHealthy: boolean; message: string; latencyMs?: number } | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
+
+  const [currentRestaurantId, setCurrentRestaurantId] = useState<string>("rest_demo_1001");
+
+  // ── Load settings & gateway configs ───────────────────────────────────────
+  const loadGatewayConfigs = useCallback(async (restaurantId: string, targetProviderId?: string) => {
+    try {
+      const { PaymentsService } = require("../../../lib/services/payments.service");
+      const configs = await PaymentsService.getGatewayConfigs(restaurantId);
+      setGatewayConfigs(configs || []);
+
+      setSelectedProviderId((currentSelectedId) => {
+        const activeId = targetProviderId || currentSelectedId || "razorpay";
+        const existingCfg = (configs || []).find((c: any) => c.providerName === activeId);
+
+        setIsGwEnabled(Boolean(existingCfg?.isEnabled ?? false));
+        setIsSandboxMode(Boolean(existingCfg?.isSandbox ?? true));
+        setGwCredentials(existingCfg?.credentials || {});
+        setGwWebhookSecret(existingCfg?.webhookSecret || "");
+        setHasUnsavedChanges(false);
+
+        return activeId;
+      });
+    } catch (err) {
+      // Backend handles unconfigured fallback cleanly
+    }
+  }, []);
+
   const hydrate = useCallback((data: FullSettings) => {
     const { profile, settings } = data;
+    if (settings.restaurantId) {
+      setCurrentRestaurantId(settings.restaurantId);
+    }
     setLogoUrl(profile.logoUrl ?? "");
     setName(profile.name ?? "");
     setOwnerName(profile.ownerName ?? "");
@@ -160,11 +200,16 @@ export default function SettingsPage() {
     setUpiQrImageUrl(settings.upiQrImageUrl ?? "");
     setCodEnabled(settings.codEnabled ?? false);
     setManualUpiEnabled(settings.manualUpiEnabled ?? true);
+    setOnlinePaymentsEnabled(settings.onlinePaymentsEnabled ?? false);
 
     setPickupAvailable(settings.pickupAvailable);
     setPrepTime(String(settings.prepTime ?? 15));
     setPickupInstructions(settings.pickupInstructions ?? "");
-  }, []);
+
+    if (settings.restaurantId) {
+      loadGatewayConfigs(settings.restaurantId);
+    }
+  }, [loadGatewayConfigs]);
 
   useEffect(() => {
     (async () => {
@@ -208,6 +253,7 @@ export default function SettingsPage() {
       upiQrImageUrl: upiQrImageUrl || undefined,
       codEnabled,
       manualUpiEnabled,
+      onlinePaymentsEnabled,
       pickupAvailable,
       prepTime: Number(prepTime) || 15,
       pickupInstructions: pickupInstructions || undefined,
@@ -224,6 +270,25 @@ export default function SettingsPage() {
     try {
       const updated = await SettingsService.updateSettings(payload);
       hydrate(updated);
+
+      // Also persist the current selected payment gateway configuration if credentials exist or enabled
+      if (currentRestaurantId && selectedProviderId) {
+        try {
+          const { PaymentsService } = require("../../../lib/services/payments.service");
+          await PaymentsService.saveGatewayConfig({
+            restaurantId: currentRestaurantId,
+            providerName: selectedProviderId,
+            credentials: gwCredentials,
+            isEnabled: isGwEnabled,
+            isSandbox: isSandboxMode,
+            webhookSecret: gwWebhookSecret
+          });
+          await loadGatewayConfigs(currentRestaurantId, selectedProviderId);
+        } catch (gwErr) {
+          // General settings saved cleanly
+        }
+      }
+
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 4000);
     } catch (err: any) {
@@ -441,15 +506,255 @@ export default function SettingsPage() {
 
             {/* ══ TAB 3: PAYMENT SETTINGS ══ */}
             {activeTab === "payment" && (
-              <div className="space-y-5">
+              <div className="space-y-6">
                 <SectionHeader
-                  title="Payment Settings"
-                  description="Enable and configure payment methods. COD skips payment. Manual UPI requires screenshot verification."
+                  title="Payment Orchestration & Gateway Settings"
+                  description="Connect preferred automated payment gateways or configure Manual UPI and Cash on Delivery."
                 />
 
-                {/* Payment Method Toggles */}
-                <div className="space-y-3">
-                  <p className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Active Methods</p>
+                {/* ── 1. UNIVERSAL PAYMENT ORCHESTRATION ENGINE ── */}
+                <div className="space-y-4 bg-[#0a0b10] border border-[#23242B] rounded-2xl p-5">
+                  <div className="flex flex-wrap justify-between items-center gap-2 border-b border-[#23242B]/60 pb-3">
+                    <div>
+                      <span className="text-xs font-bold text-white font-sora block">Automated Payment Gateways</span>
+                      <span className="text-[10px] text-slate-400">Restroex manages complete payment lifecycle & auto order confirmations.</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Master Online Gateways</span>
+                      <Toggle
+                        checked={onlinePaymentsEnabled}
+                        onChange={setOnlinePaymentsEnabled}
+                        label=""
+                        description=""
+                      />
+                    </div>
+                  </div>
+
+                  {/* Provider Selection Cards */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Select Gateway to Connect / Configure</span>
+                      {hasUnsavedChanges && (
+                        <span className="text-[10px] text-amber-400 font-semibold bg-amber-950/60 border border-amber-800/80 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                          <AlertCircle className="w-3 h-3" /> Unsaved Changes
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                      {[
+                        { id: "razorpay", name: "Razorpay PG", desc: "UPI, Cards, NetBanking", fields: [{ key: "key_id", label: "Key ID", placeholder: "rzp_live_..." }, { key: "key_secret", label: "Key Secret", placeholder: "••••••••••••", secret: true }] },
+                        { id: "cashfree", name: "Cashfree", desc: "Instant Settlement & UPI Links", fields: [{ key: "app_id", label: "App ID", placeholder: "CF_APP_..." }, { key: "secret_key", label: "Secret Key", placeholder: "••••••••••••", secret: true }] },
+                        { id: "phonepe", name: "PhonePe PG", desc: "Dynamic QR & UPI Intent", fields: [{ key: "merchant_id", label: "Merchant ID", placeholder: "PGMERCHANT..." }, { key: "salt_key", label: "Salt Key", placeholder: "••••••••••••", secret: true }] },
+                        { id: "payu", name: "PayU Biz", desc: "Enterprise Gateway", fields: [{ key: "merchant_key", label: "Merchant Key", placeholder: "PAYU_KEY..." }, { key: "merchant_salt", label: "Merchant Salt", placeholder: "••••••••••••", secret: true }] },
+                        { id: "easebuzz", name: "Easebuzz", desc: "Low-cost Indian PG", fields: [{ key: "merchant_key", label: "Merchant Key", placeholder: "EASE_KEY..." }, { key: "salt", label: "Salt", placeholder: "••••••••••••", secret: true }] },
+                        { id: "stripe", name: "Stripe", desc: "International Cards", fields: [{ key: "api_key", label: "Secret API Key", placeholder: "sk_live_...", secret: true }] },
+                      ].map((gw) => {
+                        const existingCfg = gatewayConfigs.find((c) => c.providerName === gw.id);
+                        const isEnabledInDb = existingCfg?.isEnabled ?? false;
+                        const status = isEnabledInDb ? (existingCfg?.status ?? "not_connected") : "not_connected";
+                        const isSelected = selectedProviderId === gw.id;
+
+                        return (
+                          <button
+                            key={gw.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedProviderId(gw.id);
+                              setIsGwEnabled(existingCfg?.isEnabled ?? false);
+                              setIsSandboxMode(existingCfg?.isSandbox ?? true);
+                              setGwCredentials(existingCfg?.credentials || {});
+                              setGwWebhookSecret(existingCfg?.webhookSecret || "");
+                              setGwTestResult(null);
+                              setHasUnsavedChanges(false);
+                              setSaveError(null);
+                            }}
+                            className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden ${
+                              isSelected
+                                ? "bg-violet-950/40 border-violet-500 text-white shadow-lg shadow-violet-950/30"
+                                : "bg-[#0e0f14] border-[#23242B] text-slate-300 hover:border-slate-700"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-xs">{gw.name}</span>
+                              <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider ${
+                                isEnabledInDb && status === "connected"
+                                  ? "bg-emerald-950/80 text-emerald-400 border-emerald-800"
+                                  : isEnabledInDb && status === "invalid_credentials"
+                                  ? "bg-amber-950/80 text-amber-400 border-amber-800"
+                                  : isEnabledInDb && (status === "configuration_error" || status === "provider_offline")
+                                  ? "bg-red-950/80 text-red-400 border-red-800"
+                                  : "bg-slate-900 text-slate-400 border-slate-700"
+                              }`}>
+                                {isEnabledInDb && status === "connected" && "Enabled"}
+                                {isEnabledInDb && status === "invalid_credentials" && "Invalid Keys"}
+                                {(!isEnabledInDb || status === "not_connected") && "Disabled"}
+                                {isEnabledInDb && status === "provider_offline" && "Offline"}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-slate-500 block mt-1 line-clamp-1">{gw.desc}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Active Selected Provider Form */}
+                  {(() => {
+                    const activeGwCard = [
+                      { id: "razorpay", name: "Razorpay PG", desc: "UPI, Cards, NetBanking", fields: [{ key: "key_id", label: "Key ID", placeholder: "rzp_live_..." }, { key: "key_secret", label: "Key Secret", placeholder: "••••••••••••", secret: true }] },
+                      { id: "cashfree", name: "Cashfree", desc: "Instant Settlement & UPI Links", fields: [{ key: "app_id", label: "App ID", placeholder: "CF_APP_..." }, { key: "secret_key", label: "Secret Key", placeholder: "••••••••••••", secret: true }] },
+                      { id: "phonepe", name: "PhonePe PG", desc: "Dynamic QR & UPI Intent", fields: [{ key: "merchant_id", label: "Merchant ID", placeholder: "PGMERCHANT..." }, { key: "salt_key", label: "Salt Key", placeholder: "••••••••••••", secret: true }] },
+                      { id: "payu", name: "PayU Biz", desc: "Enterprise Gateway", fields: [{ key: "merchant_key", label: "Merchant Key", placeholder: "PAYU_KEY..." }, { key: "merchant_salt", label: "Merchant Salt", placeholder: "••••••••••••", secret: true }] },
+                      { id: "easebuzz", name: "Easebuzz", desc: "Low-cost Indian PG", fields: [{ key: "merchant_key", label: "Merchant Key", placeholder: "EASE_KEY..." }, { key: "salt", label: "Salt", placeholder: "••••••••••••", secret: true }] },
+                      { id: "stripe", name: "Stripe", desc: "International Cards", fields: [{ key: "api_key", label: "Secret API Key", placeholder: "sk_live_...", secret: true }] },
+                    ].find((g) => g.id === selectedProviderId) || { id: "razorpay", name: "Razorpay PG", desc: "", fields: [] };
+
+                    return (
+                      <div className="p-4 rounded-xl bg-slate-950/60 border border-[#23242B] space-y-4 text-xs">
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#23242B]/60 pb-3">
+                          <div>
+                            <span className="font-bold text-white font-sora text-sm">{activeGwCard.name} Configuration</span>
+                            <span className="text-[10px] text-slate-500 block">({activeGwCard.desc})</span>
+                          </div>
+
+                          <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-slate-400 font-semibold">Sandbox</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsSandboxMode(!isSandboxMode);
+                                  setHasUnsavedChanges(true);
+                                }}
+                                className={`w-8 h-4 rounded-full transition-colors p-0.5 ${isSandboxMode ? "bg-amber-600" : "bg-emerald-600"}`}
+                              >
+                                <div className={`w-3 h-3 rounded-full bg-white transition-transform ${isSandboxMode ? "translate-x-0" : "translate-x-4"}`} />
+                              </button>
+                              <span className="text-[10px] text-slate-400 font-semibold">Production</span>
+                            </div>
+
+                            <div className="flex items-center gap-2 border-l border-[#23242B] pl-4">
+                              <span className="text-[10px] text-slate-400 font-semibold">Enable Provider</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsGwEnabled(!isGwEnabled);
+                                  setHasUnsavedChanges(true);
+                                }}
+                                className={`w-8 h-4 rounded-full transition-colors p-0.5 ${isGwEnabled ? "bg-emerald-600" : "bg-slate-700"}`}
+                              >
+                                <div className={`w-3 h-3 rounded-full bg-white transition-transform ${isGwEnabled ? "translate-x-4" : "translate-x-0"}`} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {activeGwCard.fields.map((f) => (
+                            <FieldGroup key={f.key} label={f.label}>
+                              <Input
+                                type={f.secret ? "password" : "text"}
+                                value={gwCredentials[f.key] || ""}
+                                onChange={(val) => {
+                                  setGwCredentials({ ...gwCredentials, [f.key]: val });
+                                  setGwTestResult(null);
+                                  setHasUnsavedChanges(true);
+                                }}
+                                placeholder={f.placeholder}
+                              />
+                            </FieldGroup>
+                          ))}
+
+                          <FieldGroup label="Webhook Signing Secret (Optional)">
+                            <Input
+                              type="password"
+                              value={gwWebhookSecret}
+                              onChange={(val) => {
+                                setGwWebhookSecret(val);
+                                setHasUnsavedChanges(true);
+                              }}
+                              placeholder="whsec_..."
+                            />
+                          </FieldGroup>
+                        </div>
+
+                        {gwTestResult && (
+                          <div className={`p-3 rounded-xl border flex items-center justify-between text-xs ${
+                            gwTestResult.isHealthy
+                              ? "bg-emerald-950/30 border-emerald-900/60 text-emerald-300"
+                              : "bg-amber-950/30 border-amber-900/60 text-amber-300"
+                          }`}>
+                            <span>{gwTestResult.message}</span>
+                            {gwTestResult.latencyMs && (
+                              <span className="text-[10px] font-mono text-slate-400">{gwTestResult.latencyMs}ms</span>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#23242B]/60 pt-3">
+                          <button
+                            type="button"
+                            disabled={isTestingGw}
+                            onClick={async () => {
+                              try {
+                                setIsTestingGw(true);
+                                setGwTestResult(null);
+                                setSaveError(null);
+                                const { PaymentsService } = require("../../../lib/services/payments.service");
+                                const res = await PaymentsService.testGatewayConnection({
+                                  restaurantId: currentRestaurantId,
+                                  providerName: selectedProviderId,
+                                  credentials: gwCredentials
+                                });
+                                setGwTestResult(res);
+                              } catch (err: any) {
+                                setSaveError(err.message || "Test connection failed");
+                              } finally {
+                                setIsTestingGw(false);
+                              }
+                            }}
+                            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-[#23242B] text-slate-200 text-xs font-semibold transition-all active:scale-95 disabled:opacity-50"
+                          >
+                            {isTestingGw ? "Testing Connection..." : "⚡ Test Gateway Connection (Backend API)"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                setIsSaving(true);
+                                setSaveError(null);
+                                const { PaymentsService } = require("../../../lib/services/payments.service");
+                                await PaymentsService.saveGatewayConfig({
+                                  restaurantId: currentRestaurantId,
+                                  providerName: selectedProviderId,
+                                  credentials: gwCredentials,
+                                  isEnabled: isGwEnabled,
+                                  isSandbox: isSandboxMode,
+                                  webhookSecret: gwWebhookSecret
+                                });
+                                setSaveSuccess(true);
+                                await loadGatewayConfigs(currentRestaurantId, selectedProviderId);
+                                setTimeout(() => setSaveSuccess(false), 3000);
+                              } catch (err: any) {
+                                setSaveError(err.message || "Failed to save gateway config");
+                              } finally {
+                                setIsSaving(false);
+                              }
+                            }}
+                            className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold transition-all active:scale-95 flex items-center gap-1.5"
+                          >
+                            <Save className="w-3.5 h-3.5" /> Save Configuration
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* ── 2. MANUAL METHODS (MANUAL UPI & COD) ── */}
+                <div className="space-y-3 border-t border-[#23242B]/60 pt-5">
+                  <p className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Manual Payment Fallbacks</p>
                   <Toggle
                     checked={manualUpiEnabled}
                     onChange={setManualUpiEnabled}
@@ -473,7 +778,7 @@ export default function SettingsPage() {
                   <div className="border-t border-[#23242B]/50 pt-4 space-y-4">
                     <div className="flex items-center gap-2">
                       <Smartphone className="h-4 w-4 text-slate-500" />
-                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">UPI Details</span>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Manual UPI Details</span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                       <FieldGroup
@@ -571,13 +876,6 @@ export default function SettingsPage() {
                     </div>
                   </div>
                 )}
-
-                {/* Future providers hint */}
-                <div className="p-4 rounded-xl border border-dashed border-[#23242B] text-center">
-                  <p className="text-[11px] text-slate-600">
-                    More payment providers — <span className="text-slate-500">Razorpay, PhonePe, Stripe</span> — coming soon.
-                  </p>
-                </div>
               </div>
             )}
 

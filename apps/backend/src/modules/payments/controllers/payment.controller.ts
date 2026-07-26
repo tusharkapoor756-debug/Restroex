@@ -1,12 +1,13 @@
 import { Request, Response } from 'express';
 import { PaymentService } from '../services/payment.service';
 import { storageService } from '../../../infrastructure/storage/storage.service';
+import { logger } from '../../../infrastructure/logger/logger';
 
 export class PaymentController {
   private readonly service: PaymentService;
 
-  constructor() {
-    this.service = new PaymentService();
+  constructor(service?: PaymentService) {
+    this.service = service ?? new PaymentService();
   }
 
   /** POST /payments — create a new payment record */
@@ -38,6 +39,20 @@ export class PaymentController {
         transactionReference
       );
       res.status(200).json({ success: true, data: payment });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message });
+    }
+  }
+
+  /** POST /payments/:id/analyze — trigger Payment Intelligence Engine evaluation on demand */
+  public async analyzePayment(req: Request, res: Response): Promise<void> {
+    try {
+      const paymentId = req.params.id as string;
+      const rawText: string | undefined = req.body.rawText;
+      const buffer = rawText ? Buffer.from(rawText, 'utf-8') : undefined;
+
+      const analysis = await this.service.analyzePayment(paymentId, buffer);
+      res.status(200).json({ success: true, data: analysis });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
     }
@@ -105,6 +120,7 @@ export class PaymentController {
   public async getPaymentsByRestaurant(req: Request, res: Response): Promise<void> {
     try {
       const payments = await this.service.getPaymentsByRestaurant(req.params.restaurantId as string);
+      logger.info({ restaurantId: req.params.restaurantId, count: payments.length }, '📤 Dashboard API returning analysis');
       res.status(200).json({ success: true, data: payments });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });

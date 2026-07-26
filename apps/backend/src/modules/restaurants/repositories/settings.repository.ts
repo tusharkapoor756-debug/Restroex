@@ -158,6 +158,7 @@ export class SettingsRepository {
       if (settingsUpdate.autoAcceptPaidOrders !== undefined) settingsPayload.auto_accept_paid_orders = settingsUpdate.autoAcceptPaidOrders;
       if (settingsUpdate.codEnabled !== undefined) settingsPayload.cod_enabled = settingsUpdate.codEnabled;
       if (settingsUpdate.manualUpiEnabled !== undefined) settingsPayload.manual_upi_enabled = settingsUpdate.manualUpiEnabled;
+      if (settingsUpdate.onlinePaymentsEnabled !== undefined) settingsPayload.online_payments_enabled = settingsUpdate.onlinePaymentsEnabled;
 
       const { error: settingsError } = await this.client
         .from('restaurant_settings')
@@ -214,6 +215,7 @@ export class SettingsRepository {
         autoAcceptPaidOrders: settingsRow.auto_accept_paid_orders ?? false,
         codEnabled: settingsRow.cod_enabled ?? false,
         manualUpiEnabled: settingsRow.manual_upi_enabled ?? true,
+        onlinePaymentsEnabled: settingsRow.online_payments_enabled ?? false,
         createdAt: settingsRow.created_at,
         updatedAt: settingsRow.updated_at,
       }

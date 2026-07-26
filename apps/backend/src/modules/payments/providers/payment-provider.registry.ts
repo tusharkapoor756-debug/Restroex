@@ -1,31 +1,38 @@
 import { IPaymentProvider } from './payment-provider.interface';
 import { ManualUpiProvider } from './manual-upi.provider';
 import { CodProvider } from './cod.provider';
+import { UpiScreenshotProvider } from './upi-screenshot.provider';
+import { RazorpayProvider } from './razorpay.provider';
+import { CashfreeProvider } from './cashfree.provider';
+import { PhonePeProvider } from './phonepe.provider';
+import { PayUProvider } from './payu.provider';
+import { EasebuzzProvider } from './easebuzz.provider';
+import { StripeProvider } from './stripe.provider';
 
 // ============================================================
 // PaymentProviderRegistry
 //
-// Central registry that maps payment_method strings to their
-// provider implementations. To add a new gateway:
-//   1. Implement IPaymentProvider in a new file
-//   2. Add one line to this registry — nothing else changes.
+// Central registry mapping providerName / payment_method strings
+// to their IPaymentProvider implementations.
 // ============================================================
 export class PaymentProviderRegistry {
   private static readonly providers: Map<string, IPaymentProvider> = new Map<string, IPaymentProvider>([
+    ['upi_screenshot', new UpiScreenshotProvider()],
     ['manual_upi', new ManualUpiProvider()],
     ['cash', new CodProvider()],
-    // Future providers — uncomment when APIs are implemented:
-    // ['razorpay', new RazorpayProvider()],
-    // ['phonepe', new PhonePeProvider()],
-    // ['stripe', new StripeProvider()],
-    // ['card', new CardProvider()],
+    ['razorpay', new RazorpayProvider()],
+    ['cashfree', new CashfreeProvider()],
+    ['phonepe', new PhonePeProvider()],
+    ['payu', new PayUProvider()],
+    ['easebuzz', new EasebuzzProvider()],
+    ['stripe', new StripeProvider()],
   ]);
 
   public static get(paymentMethod: string): IPaymentProvider {
     const provider = this.providers.get(paymentMethod);
     if (!provider) {
       throw new Error(
-        `No provider registered for payment method "${paymentMethod}". ` +
+        `No provider registered for payment method/provider "${paymentMethod}". ` +
         `Available: ${[...this.providers.keys()].join(', ')}.`
       );
     }
@@ -38,5 +45,9 @@ export class PaymentProviderRegistry {
 
   public static getSupportedMethods(): string[] {
     return [...this.providers.keys()];
+  }
+
+  public static getAllProviders(): IPaymentProvider[] {
+    return [...this.providers.values()];
   }
 }

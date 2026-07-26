@@ -96,9 +96,9 @@ export default function WhatsAppPage() {
   useEffect(() => {
     WhatsAppService.getWhatsAppConfig()
       .then((res) => {
-        if (res?.data) {
-          setOrderingMode(res.data.orderingMode);
-          setHomeScreenItems(res.data.homeScreenItems || []);
+        if (res) {
+          setOrderingMode(res.orderingMode || "hybrid");
+          setHomeScreenItems(res.homeScreenItems || []);
         }
       })
       .catch((err) => console.error("Failed to load WhatsApp config:", err));

@@ -41,4 +41,28 @@ export class PaymentsService {
   static async getScreenshotUrl(paymentId: string): Promise<ScreenshotUrlResponse> {
     return api.get<ScreenshotUrlResponse>(`/payments/${paymentId}/screenshot-url`);
   }
+
+  /**
+   * Fetches real-time status & configurations for all gateways of a restaurant.
+   * Calls: GET /payments/config/:restaurantId
+   */
+  static async getGatewayConfigs(restaurantId: string): Promise<import("../../types").RestaurantPaymentConfig[]> {
+    return api.get<import("../../types").RestaurantPaymentConfig[]>(`/payments/config/${restaurantId}`);
+  }
+
+  /**
+   * Saves or updates a payment gateway configuration & tests credentials.
+   * Calls: POST /payments/config
+   */
+  static async saveGatewayConfig(payload: import("../../types").SaveProviderConfigPayload): Promise<import("../../types").RestaurantPaymentConfig> {
+    return api.post<import("../../types").RestaurantPaymentConfig>('/payments/config', payload);
+  }
+
+  /**
+   * Runs a live health check on a payment gateway.
+   * Calls: POST /payments/config/test
+   */
+  static async testGatewayConnection(payload: import("../../types").TestGatewayPayload): Promise<import("../../types").ProviderHealthCheckResult> {
+    return api.post<import("../../types").ProviderHealthCheckResult>('/payments/config/test', payload);
+  }
 }

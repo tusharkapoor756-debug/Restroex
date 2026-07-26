@@ -23,6 +23,7 @@ export interface UpdateSettingsDto {
   upiQrImageUrl?: string;
   codEnabled?: boolean;
   manualUpiEnabled?: boolean;
+  onlinePaymentsEnabled?: boolean;
 
   // Store Settings
   pickupAvailable?: boolean;

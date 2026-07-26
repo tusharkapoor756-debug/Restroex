@@ -110,6 +110,9 @@ export class SessionService {
       // 5. Execute FSM Transition and State Mutations
       const { nextState, updatedCart, updatedContext } = this.engine.processEvent(session, event);
 
+      logger.info({ point: 1, updatedCartFromEngine: updatedCart }, '🔍 [DIAGNOSTIC 1] updatedCart returned by ConversationEngine');
+      logger.info({ point: 2, updatedCartToRepository: updatedCart }, '🔍 [DIAGNOSTIC 2] updatedCart passed into updateSession()');
+
       // 6. Persist Updated State to Database
       const updatedSession = await this.repository.updateSession(
         session.id,
@@ -117,6 +120,8 @@ export class SessionService {
         updatedCart,
         updatedContext
       );
+
+      logger.info({ point: 3, conversationSessionsCartDb: updatedSession.cart }, '🔍 [DIAGNOSTIC 3] conversation_sessions.cart immediately after updateSession()');
 
       // Sync with customer_carts table
       try {
@@ -129,6 +134,9 @@ export class SessionService {
         } else {
           // Sync items
           await innerCartService.updateItems(dbCart.id, updatedCart.items);
+          const syncedDbCart = await innerCartService.getActiveCart(restaurantId, customerPhone);
+          logger.info({ point: 4, customerCartsItemsDb: syncedDbCart?.items }, '🔍 [DIAGNOSTIC 4] customer_carts.items immediately after updateItems()');
+
           // Sync status
           let nextCartStatus: any = 'active';
           if (nextState === ConversationState.AWAITING_CONFIRMATION) {
@@ -143,6 +151,9 @@ export class SessionService {
       } catch (err) {
         logger.error({ err, customerPhone }, 'Failed to sync session cart with customer_carts table');
       }
+
+      const freshSession = await this.getSession(restaurantId, customerPhone);
+      logger.info({ point: 5, getSessionCart: freshSession.cart }, '🔍 [DIAGNOSTIC 5] session returned by getSession()');
 
       logger.info(
         { from: session.state, to: nextState, event: event.name },

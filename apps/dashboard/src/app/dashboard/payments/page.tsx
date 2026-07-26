@@ -269,6 +269,173 @@ function VerificationModal({ payment, onClose, onVerified, onRejected }: ModalPr
               </div>
               <StatusBadge status={payment.paymentStatus} />
             </div>
+
+            {/* Payment Intelligence Engine OCR Result Card */}
+            {payment.gatewayData?.analysis_result ? (
+              <div className="rounded-xl border border-violet-500/30 bg-violet-950/20 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-violet-300">
+                    <Shield className="w-4 h-4 text-violet-400" />
+                    <span>Payment Intelligence Report</span>
+                  </div>
+                  <span
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                      payment.gatewayData.analysis_result.recommendedAction === 'APPROVE'
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                        : payment.gatewayData.analysis_result.recommendedAction === 'REJECT'
+                        ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                        : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                    }`}
+                  >
+                    {payment.gatewayData.analysis_result.recommendedAction.replace('_', ' ')}
+                  </span>
+                </div>
+
+                {/* 3 Score Header Summary */}
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div className="rounded-lg bg-[#0D0D0F] p-2 border border-[#23242B] text-center">
+                    <span className="text-slate-500 block text-[9px] uppercase font-semibold">OCR Confidence</span>
+                    <span className="font-bold text-violet-400 text-sm">
+                      {payment.gatewayData.analysis_result.ocrConfidence ?? payment.gatewayData.analysis_result.extractedDetails?.overallConfidence ?? 0}%
+                    </span>
+                  </div>
+                  <div className="rounded-lg bg-[#0D0D0F] p-2 border border-[#23242B] text-center">
+                    <span className="text-slate-500 block text-[9px] uppercase font-semibold">Verification Score</span>
+                    <span className={`font-bold text-sm ${
+                      (payment.gatewayData.analysis_result.verificationScore ?? 0) >= 80 ? 'text-emerald-400' : 'text-amber-400'
+                    }`}>
+                      {payment.gatewayData.analysis_result.verificationScore ?? payment.gatewayData.analysis_result.overallConfidence}%
+                    </span>
+                  </div>
+                  <div className="rounded-lg bg-[#0D0D0F] p-2 border border-[#23242B] text-center">
+                    <span className="text-slate-500 block text-[9px] uppercase font-semibold">Fraud Risk</span>
+                    <span className={`font-bold text-sm ${
+                      payment.gatewayData.analysis_result.riskScore >= 50 ? 'text-red-400' : 'text-slate-200'
+                    }`}>
+                      {payment.gatewayData.analysis_result.riskScore}/100
+                    </span>
+                  </div>
+                </div>
+
+                {/* SECTION 1: OCR EXTRACTION (NO PASS/FAIL HERE) */}
+                {payment.gatewayData.analysis_result.extractedDetails && (
+                  <div className="space-y-1.5 bg-[#0D0D0F] p-3 rounded-lg border border-[#23242B]">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] text-violet-400 font-bold uppercase tracking-wider">
+                        1. OCR Extraction (Raw Evidence)
+                      </p>
+                      <span className="text-[9px] text-slate-400">Source: {payment.gatewayData.analysis_result.analysisSource ?? 'Local OCR'}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5 text-xs pt-1">
+                      <div className="flex justify-between py-0.5 border-b border-[#1A1B23]">
+                        <span className="text-slate-400">Amount:</span>
+                        <span className="font-semibold text-slate-200">
+                          {payment.gatewayData.analysis_result.extractedDetails.amount?.value ? `Extracted (₹${payment.gatewayData.analysis_result.extractedDetails.amount.value})` : 'Not Detected'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-0.5 border-b border-[#1A1B23]">
+                        <span className="text-slate-400">Receiver Name:</span>
+                        <span className="font-semibold text-slate-200">
+                          {payment.gatewayData.analysis_result.extractedDetails.receiverName?.value ? `Extracted (${payment.gatewayData.analysis_result.extractedDetails.receiverName.value})` : 'Not Detected'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-0.5 border-b border-[#1A1B23]">
+                        <span className="text-slate-400">Receiver UPI:</span>
+                        <span className="font-mono text-slate-200">
+                          {payment.gatewayData.analysis_result.extractedDetails.receiverUpiId?.value ? `Extracted (${payment.gatewayData.analysis_result.extractedDetails.receiverUpiId.value})` : 'Not Detected'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-0.5 border-b border-[#1A1B23]">
+                        <span className="text-slate-400">UTR / Ref:</span>
+                        <span className="font-mono text-slate-200">
+                          {payment.gatewayData.analysis_result.extractedDetails.upiReference?.value ? `Extracted (${payment.gatewayData.analysis_result.extractedDetails.upiReference.value})` : 'Not Detected'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-0.5 col-span-2">
+                        <span className="text-slate-400">Payment Status:</span>
+                        <span className="font-semibold text-slate-200">
+                          Screenshot Shows {payment.gatewayData.analysis_result.extractedDetails.paymentStatusInScreenshot?.value ?? 'UNKNOWN'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* SECTION 2: PAYMENT VERIFICATION (THE ONLY PLACE PASS/FAIL EXISTS) */}
+                {payment.gatewayData.analysis_result.merchantVerification && (
+                  <div className="space-y-1.5 bg-[#0D0D0F] p-3 rounded-lg border border-[#23242B]">
+                    <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
+                      2. Payment Verification (Business Rules)
+                    </p>
+                    {payment.gatewayData.analysis_result.merchantVerification.rules.map((rule: any) => {
+                      const isUnconfigured = rule.expected === 'Not Configured';
+                      return (
+                        <div key={rule.ruleId} className="flex items-start justify-between py-1 border-b border-[#1A1B23] last:border-0 text-xs">
+                          <div className="space-y-0.5">
+                            <span className="text-slate-300 font-semibold">{rule.title}</span>
+                            <span className="text-[10px] text-slate-500 block">
+                              Restaurant: <span className="font-mono text-slate-400">{rule.expected}</span> ↓ Screenshot: <span className="font-mono text-slate-300">{rule.actual}</span>
+                            </span>
+                          </div>
+                          <span
+                            className={`font-bold text-[10px] px-1.5 py-0.5 rounded ${
+                              isUnconfigured
+                                ? 'bg-slate-500/20 text-slate-400 border border-slate-500/30'
+                                : rule.passed
+                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                            }`}
+                          >
+                            {isUnconfigured ? 'NOT CONFIGURED' : rule.passed ? '✔ PASS' : '❌ FAIL'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* SECTION 3: FRAUD SIGNALS & RISK ANALYSIS */}
+                <div className="space-y-1.5 bg-[#0D0D0F] p-3 rounded-lg border border-[#23242B]">
+                  <p className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">
+                    3. Fraud Signals & Risk Analysis
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                    <div className="flex justify-between py-1 px-2 rounded bg-[#14151C] border border-[#23242B]">
+                      <span className="text-slate-400">Duplicate Screenshot:</span>
+                      <span className={`font-bold text-[10px] ${payment.gatewayData.analysis_result.duplicate ? 'text-red-400' : 'text-emerald-400'}`}>
+                        {payment.gatewayData.analysis_result.duplicate ? 'Detected ⚠️' : 'Not Detected'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-1 px-2 rounded bg-[#14151C] border border-[#23242B]">
+                      <span className="text-slate-400">Risk Score Level:</span>
+                      <span className={`font-bold text-[10px] ${payment.gatewayData.analysis_result.riskScore >= 50 ? 'text-red-400' : 'text-emerald-400'}`}>
+                        {payment.gatewayData.analysis_result.riskScore >= 50 ? 'High Risk' : 'Low Risk'} ({payment.gatewayData.analysis_result.riskScore}/100)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* DECISION BANNER & 3-SECOND HUMAN EXPLANATION */}
+                {payment.gatewayData.analysis_result.humanSummary && (
+                  <div
+                    className={`p-3 rounded-lg border text-xs leading-relaxed ${
+                      payment.gatewayData.analysis_result.recommendedAction === 'APPROVE'
+                        ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300'
+                        : payment.gatewayData.analysis_result.recommendedAction === 'REJECT'
+                        ? 'bg-red-950/20 border-red-500/30 text-red-300'
+                        : 'bg-amber-950/20 border-amber-500/30 text-amber-300'
+                    }`}
+                  >
+                    <p className="font-bold text-[11px] uppercase tracking-wider mb-0.5">
+                      Decision: {payment.gatewayData.analysis_result.recommendedAction}
+                    </p>
+                    <p className="text-[11px]">
+                      {payment.gatewayData.analysis_result.humanSummary}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
 
           {/* Right — Actions */}

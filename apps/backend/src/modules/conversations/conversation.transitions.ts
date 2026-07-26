@@ -26,6 +26,7 @@ export class ConversationTransitions {
       CHOOSE_VARIANT: ConversationState.AWAITING_QUANTITY,
     },
     [ConversationState.AWAITING_QUANTITY]: {
+      ITEM_ADDED: ConversationState.AWAITING_ITEM,
       SET_QUANTITY: ConversationState.AWAITING_ITEM, // Quantity locked, return to accept new items
       PROCEED_TO_CHECKOUT: ConversationState.AWAITING_CONFIRMATION,
     },

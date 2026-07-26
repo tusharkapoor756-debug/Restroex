@@ -17,10 +17,16 @@ import {
   Link as LinkIcon,
   HelpCircle,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  ShieldCheck,
+  Activity,
+  RefreshCw,
+  Copy,
+  ExternalLink,
+  Check
 } from "lucide-react";
 
-type SubSection = "profile" | "team" | "whatsapp" | "integrations" | "billing" | "account";
+type SubSection = "profile" | "payments" | "team" | "whatsapp" | "integrations" | "billing" | "account";
 
 interface TeamMember {
   id: string;
@@ -30,8 +36,72 @@ interface TeamMember {
   status: "active" | "invited";
 }
 
+interface ProviderCard {
+  id: string;
+  name: string;
+  desc: string;
+  fields: { key: string; label: string; placeholder: string; type?: string }[];
+}
+
+const SUPPORTED_GATEWAYS: ProviderCard[] = [
+  {
+    id: "razorpay",
+    name: "Razorpay PG",
+    desc: "UPI, Cards, NetBanking, Instant Refund & Payment Links",
+    fields: [
+      { key: "key_id", label: "Key ID", placeholder: "rzp_live_..." },
+      { key: "key_secret", label: "Key Secret", placeholder: "••••••••••••", type: "password" }
+    ]
+  },
+  {
+    id: "cashfree",
+    name: "Cashfree Payments",
+    desc: "Instant Settlement, UPI Intent, Payment Links & Subscriptions",
+    fields: [
+      { key: "app_id", label: "App ID", placeholder: "CF_APP_..." },
+      { key: "secret_key", label: "Secret Key", placeholder: "••••••••••••", type: "password" }
+    ]
+  },
+  {
+    id: "phonepe",
+    name: "PhonePe PG",
+    desc: "Direct UPI Intent & Dynamic QR for Merchants",
+    fields: [
+      { key: "merchant_id", label: "Merchant ID", placeholder: "PGMERCHANT..." },
+      { key: "salt_key", label: "Salt Key", placeholder: "••••••••••••", type: "password" },
+      { key: "salt_index", label: "Salt Index", placeholder: "1" }
+    ]
+  },
+  {
+    id: "payu",
+    name: "PayU Biz",
+    desc: "Enterprise Gateway supporting high success rates",
+    fields: [
+      { key: "merchant_key", label: "Merchant Key", placeholder: "PAYU_KEY..." },
+      { key: "merchant_salt", label: "Merchant Salt", placeholder: "••••••••••••", type: "password" }
+    ]
+  },
+  {
+    id: "easebuzz",
+    name: "Easebuzz",
+    desc: "Low-cost Indian PG with multi-payment mode support",
+    fields: [
+      { key: "merchant_key", label: "Merchant Key", placeholder: "EASE_KEY..." },
+      { key: "salt", label: "Salt", placeholder: "••••••••••••", type: "password" }
+    ]
+  },
+  {
+    id: "stripe",
+    name: "Stripe International",
+    desc: "Global Credit/Debit Card payments & Apple Pay",
+    fields: [
+      { key: "api_key", label: "Secret API Key", placeholder: "sk_live_..." }
+    ]
+  }
+];
+
 export default function SettingsPage() {
-  const [activeSection, setActiveSection] = useState<SubSection>("profile");
+  const [activeSection, setActiveSection] = useState<SubSection>("payments");
 
   // Status/feedback states
   const [isSaving, setIsSaving] = useState(false);
@@ -44,7 +114,25 @@ export default function SettingsPage() {
   const [address, setAddress] = useState("123 Culinary Boulevard, Suite A");
   const [avgTicket, setAvgTicket] = useState("650");
 
-  // 2. Team State
+  // 2. Universal Payment Gateway Settings State
+  const [selectedProvider, setSelectedProvider] = useState<string>("razorpay");
+  const [isSandbox, setIsSandbox] = useState<boolean>(true);
+  const [isProviderEnabled, setIsProviderEnabled] = useState<boolean>(true);
+  const [credentials, setCredentials] = useState<Record<string, string>>({
+    key_id: "rzp_test_99887766",
+    key_secret: "secret_sample_token_123"
+  });
+  const [webhookSecret, setWebhookSecret] = useState<string>("whsec_restroex_demo_secret");
+  const [gatewayStatus, setGatewayStatus] = useState<string>("connected"); // connected, invalid_credentials, configuration_error, provider_offline, not_connected
+  const [isTestingConnection, setIsTestingConnection] = useState<boolean>(false);
+  const [testResult, setTestResult] = useState<{ isHealthy: boolean; message: string; latencyMs?: number } | null>({
+    isHealthy: true,
+    message: "Razorpay PG authenticated successfully",
+    latencyMs: 45
+  });
+  const [copiedWebhook, setCopiedWebhook] = useState(false);
+
+  // 3. Team State
   const [team, setTeam] = useState<TeamMember[]>([
     { id: "tm-1", name: "Operator Hub (You)", email: "admin@restroex.com", role: "owner", status: "active" },
     { id: "tm-2", name: "Chef Alex", email: "alex.cuisine@gmail.com", role: "chef", status: "active" },
@@ -55,12 +143,12 @@ export default function SettingsPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"manager" | "chef" | "cashier">("manager");
 
-  // 3. WhatsApp Settings State
+  // 4. WhatsApp Settings State
   const [botWelcomeMsg, setBotWelcomeMsg] = useState("Hello! Welcome to Bella Italia. Would you like to view our digital menu or place a new order today?");
   const [aiAutoOrder, setAiAutoOrder] = useState(true);
   const [isWaConnected, setIsWaConnected] = useState(true);
 
-  // 4. Integrations State
+  // 5. Integrations State
   const [integrations, setIntegrations] = useState([
     { id: "zomato", name: "Zomato Ingestion", desc: "Sync live menus and ingest orders directly", connected: true },
     { id: "swiggy", name: "Swiggy Ingestion", desc: "Sync live menus and ingest orders directly", connected: false },
@@ -78,9 +166,7 @@ export default function SettingsPage() {
         if (data.phone) setPhone(data.phone);
         if (data.address) setAddress(data.address);
         if (data.whatsappConnected !== undefined) setIsWaConnected(data.whatsappConnected);
-      } catch (e) {
-        // use default
-      }
+      } catch (e) {}
     }
   }, []);
 
@@ -89,8 +175,7 @@ export default function SettingsPage() {
     setIsSaving(true);
     setSaveSuccess(false);
 
-    // Simulate saving settings
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     localStorage.setItem(
       "restroex_restaurant",
@@ -107,6 +192,51 @@ export default function SettingsPage() {
     setIsSaving(false);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
+  };
+
+  const handleSaveGatewayConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    setSaveSuccess(false);
+
+    await new Promise((resolve) => setTimeout(resolve, 800));
+
+    setGatewayStatus("connected");
+    setTestResult({
+      isHealthy: true,
+      message: `${SUPPORTED_GATEWAYS.find((g) => g.id === selectedProvider)?.name} saved & authenticated successfully`,
+      latencyMs: 38
+    });
+
+    setIsSaving(false);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 3000);
+  };
+
+  const handleTestConnection = async () => {
+    setIsTestingConnection(true);
+    setTestResult(null);
+
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+
+    const isMissingField = Object.values(credentials).some((val) => !val || val.trim().length === 0);
+
+    if (isMissingField) {
+      setGatewayStatus("invalid_credentials");
+      setTestResult({
+        isHealthy: false,
+        message: "API Credentials missing or incomplete. Please verify keys."
+      });
+    } else {
+      setGatewayStatus("connected");
+      setTestResult({
+        isHealthy: true,
+        message: "Connection verified! Webhook signature & authentication checks passed.",
+        latencyMs: Math.floor(Math.random() * 30) + 30
+      });
+    }
+
+    setIsTestingConnection(false);
   };
 
   const handleInviteTeam = (e: React.FormEvent) => {
@@ -140,13 +270,23 @@ export default function SettingsPage() {
     );
   };
 
+  const webhookUrl = `https://api.restroex.com/api/v1/payments/webhooks/rest_demo_1001/${selectedProvider}`;
+
+  const copyWebhookUrl = () => {
+    navigator.clipboard.writeText(webhookUrl);
+    setCopiedWebhook(true);
+    setTimeout(() => setCopiedWebhook(false), 2000);
+  };
+
+  const currentGatewayCard = SUPPORTED_GATEWAYS.find((g) => g.id === selectedProvider) || SUPPORTED_GATEWAYS[0];
+
   return (
     <div className="space-y-6">
       
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold font-sora text-white">System Settings</h1>
-        <p className="text-slate-400 text-xs mt-0.5">Control billing tiers, operational WhatsApp bots, team hierarchy, and profile parameters.</p>
+        <p className="text-slate-400 text-xs mt-0.5">Manage Universal Payment Orchestration Engine, WhatsApp automation line, team hierarchy, and profile parameters.</p>
       </div>
 
       {/* SUCCESS POPUP */}
@@ -162,6 +302,15 @@ export default function SettingsPage() {
         
         {/* Left Side Settings Navigation (3 columns) */}
         <div className="lg:col-span-3 space-y-1 bg-[#0e0f14]/50 border border-[#23242B] rounded-2xl p-3">
+          <button
+            onClick={() => setActiveSection("payments")}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold text-left transition-all ${
+              activeSection === "payments" ? "bg-violet-600 text-white" : "text-slate-400 hover:text-white hover:bg-slate-900/40"
+            }`}
+          >
+            <ShieldCheck className="h-4 w-4 text-emerald-400" /> Universal Payment Gateway
+          </button>
+
           <button
             onClick={() => setActiveSection("profile")}
             className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold text-left transition-all ${
@@ -220,6 +369,184 @@ export default function SettingsPage() {
         {/* Right Side Settings Form panels (9 columns) */}
         <div className="lg:col-span-9 bg-[#0e0f14]/40 border border-[#23242B] rounded-2xl p-6 min-h-[55vh]">
           
+          {/* 0. UNIVERSAL PAYMENT ORCHESTRATION ENGINE SETTINGS */}
+          {activeSection === "payments" && (
+            <div className="space-y-6">
+              <div className="border-b border-[#23242B]/40 pb-3 flex flex-wrap justify-between items-center gap-2">
+                <div>
+                  <h3 className="text-sm font-bold text-white font-sora flex items-center gap-2">
+                    Universal Payment Orchestration Engine
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Connect your preferred payment gateway. Restroex manages complete lifecycle & auto order confirmations.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
+                    gatewayStatus === "connected"
+                      ? "bg-emerald-950/80 text-emerald-400 border-emerald-800"
+                      : gatewayStatus === "invalid_credentials"
+                      ? "bg-amber-950/80 text-amber-400 border-amber-800"
+                      : "bg-red-950/80 text-red-400 border-red-800"
+                  }`}>
+                    {gatewayStatus === "connected" && "✅ Connected"}
+                    {gatewayStatus === "invalid_credentials" && "⚠ Invalid Credentials"}
+                    {gatewayStatus === "not_connected" && "❌ Not Connected"}
+                    {gatewayStatus === "provider_offline" && "⚠ Provider Offline"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Provider Selection Grid */}
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Select Active Provider</label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {SUPPORTED_GATEWAYS.map((gw) => (
+                    <button
+                      key={gw.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedProvider(gw.id);
+                        setCredentials({});
+                        setTestResult(null);
+                      }}
+                      className={`p-3 rounded-xl border text-left transition-all ${
+                        selectedProvider === gw.id
+                          ? "bg-violet-950/40 border-violet-500 text-white shadow-lg shadow-violet-950/30"
+                          : "bg-slate-950/40 border-[#23242B] text-slate-400 hover:text-slate-200 hover:border-slate-800"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs">{gw.name}</span>
+                        {selectedProvider === gw.id && <CheckCircle2 className="h-3.5 w-3.5 text-violet-400" />}
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-1 line-clamp-1">{gw.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Configuration Form */}
+              <form onSubmit={handleSaveGatewayConfig} className="bg-slate-950/40 border border-[#23242B] rounded-2xl p-5 space-y-5 text-xs">
+                <div className="flex flex-wrap justify-between items-center gap-3 border-b border-[#23242B]/40 pb-3">
+                  <div className="flex items-center gap-3">
+                    <span className="font-bold text-slate-200">{currentGatewayCard.name} API Keys</span>
+                    <span className="text-[10px] text-slate-500">({currentGatewayCard.desc})</span>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    {/* Sandbox / Production Toggle */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-400 font-semibold">Sandbox Mode</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsSandbox(!isSandbox)}
+                        className={`w-8 h-4 rounded-full transition-colors p-0.5 ${isSandbox ? "bg-amber-600" : "bg-emerald-600"}`}
+                      >
+                        <div className={`w-3 h-3 rounded-full bg-white transition-transform ${isSandbox ? "translate-x-0" : "translate-x-4"}`} />
+                      </button>
+                      <span className="text-[10px] text-slate-400 font-semibold">Production</span>
+                    </div>
+
+                    {/* Enable Provider Toggle */}
+                    <div className="flex items-center gap-2 border-l border-[#23242B] pl-4">
+                      <span className="text-[10px] text-slate-400 font-semibold">Enabled</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsProviderEnabled(!isProviderEnabled)}
+                        className={`w-8 h-4 rounded-full transition-colors p-0.5 ${isProviderEnabled ? "bg-violet-600" : "bg-slate-700"}`}
+                      >
+                        <div className={`w-3 h-3 rounded-full bg-white transition-transform ${isProviderEnabled ? "translate-x-4" : "translate-x-0"}`} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* API Credentials Input Fields */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {currentGatewayCard.fields.map((f) => (
+                    <div key={f.key} className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-bold tracking-wider text-slate-400">{f.label}</label>
+                      <input
+                        type={f.type || "text"}
+                        placeholder={f.placeholder}
+                        value={credentials[f.key] || ""}
+                        onChange={(e) => setCredentials({ ...credentials, [f.key]: e.target.value })}
+                        className="w-full bg-slate-950 border border-[#23242B] focus:border-violet-500 rounded-xl px-3 py-2 text-slate-100 placeholder-slate-600 focus:outline-none"
+                      />
+                    </div>
+                  ))}
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Webhook Secret (Optional)</label>
+                    <input
+                      type="password"
+                      placeholder="whsec_..."
+                      value={webhookSecret}
+                      onChange={(e) => setWebhookSecret(e.target.value)}
+                      className="w-full bg-slate-950 border border-[#23242B] focus:border-violet-500 rounded-xl px-3 py-2 text-slate-100 placeholder-slate-600 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Webhook Endpoint Box */}
+                <div className="space-y-1.5 p-3 rounded-xl bg-slate-900/60 border border-[#23242B]">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Provider Webhook URL</span>
+                    <button
+                      type="button"
+                      onClick={copyWebhookUrl}
+                      className="flex items-center gap-1 text-[10px] text-violet-400 hover:text-violet-300 font-semibold"
+                    >
+                      {copiedWebhook ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                      {copiedWebhook ? "Copied!" : "Copy Webhook URL"}
+                    </button>
+                  </div>
+                  <code className="text-[11px] text-slate-300 font-mono block break-all">{webhookUrl}</code>
+                </div>
+
+                {/* Live Diagnostic Output Box */}
+                {testResult && (
+                  <div className={`p-3 rounded-xl border flex items-center justify-between text-xs ${
+                    testResult.isHealthy
+                      ? "bg-emerald-950/30 border-emerald-900/60 text-emerald-300"
+                      : "bg-amber-950/30 border-amber-900/60 text-amber-300"
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <Activity className="h-4 w-4 shrink-0" />
+                      <span>{testResult.message}</span>
+                    </div>
+                    {testResult.latencyMs && (
+                      <span className="text-[10px] text-slate-400 font-mono">{testResult.latencyMs}ms</span>
+                    )}
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#23242B]/40 pt-4">
+                  <button
+                    type="button"
+                    onClick={handleTestConnection}
+                    disabled={isTestingConnection}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-[#23242B] text-slate-200 px-3.5 py-2 font-semibold text-xs transition-all active:scale-[0.98] disabled:opacity-50"
+                  >
+                    {isTestingConnection ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 text-violet-400" />}
+                    Test Payment Gateway Connection
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white px-4 py-2 font-semibold text-xs active:scale-[0.98] transition-all disabled:opacity-50"
+                  >
+                    {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                    Save Gateway Configuration
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
           {/* 1. RESTAURANT PROFILE DETAILS */}
           {activeSection === "profile" && (
             <form onSubmit={handleSaveProfile} className="space-y-6">

@@ -1,32 +1,33 @@
-import { IPaymentProvider } from './payment-provider.interface';
+import { BaseProvider } from './base.provider';
 import { CreatePaymentDto } from '../types/payment.types';
+import { ProviderCapabilities } from '../types/provider-capabilities.types';
+import { PaymentAnalysisResult, PaymentVerificationContext } from '../types/payment-analysis.types';
+import { PaymentIntelligenceEngine } from '../engine/intelligence/payment-intelligence.engine';
 
-// ============================================================
-// ManualUpiProvider
-//
-// Handles the Manual UPI payment flow:
-//   1. Records UPI merchant details in gateway_data
-//   2. Customer uploads a screenshot (handled by PaymentService)
-//   3. Admin verifies manually (handled by PaymentService)
-//
-// gateway_data shape for Manual UPI:
-// {
-//   upi_id: string;
-//   merchant_name: string;
-//   upi_qr_image_url?: string;
-//   screenshot_url?: string;
-//   transaction_reference?: string;
-// }
-// ============================================================
-export class ManualUpiProvider implements IPaymentProvider {
+export class ManualUpiProvider extends BaseProvider {
   readonly providerName = 'manual_upi';
+  private intelligenceEngine: PaymentIntelligenceEngine;
 
-  public async initiatePayment(dto: CreatePaymentDto): Promise<{
+  constructor(intelligenceEngine?: PaymentIntelligenceEngine) {
+    super();
+    this.intelligenceEngine = intelligenceEngine ?? new PaymentIntelligenceEngine();
+  }
+
+  public getCapabilities(): ProviderCapabilities {
+    return {
+      supportsOcr: true,
+      supportsAutoVerification: false,
+      supportsRefund: false,
+      supportsWebhooks: false,
+      supportsManualReview: true,
+      supportsTestMode: true,
+    };
+  }
+
+  public override async initiatePayment(dto: CreatePaymentDto): Promise<{
     gatewayData: Record<string, any>;
     initialStatus: 'pending' | 'initiated';
   }> {
-    // For manual UPI there is no API call — we simply record the
-    // merchant UPI details that the customer should pay to.
     const existingData = dto.gatewayData ?? {};
 
     return {
@@ -42,8 +43,14 @@ export class ManualUpiProvider implements IPaymentProvider {
   }
 
   public async verifyPayment(): Promise<boolean> {
-    // Manual UPI verification is always admin-triggered (always trusted)
     return true;
+  }
+
+  public async analyzePayment(
+    context: PaymentVerificationContext,
+    rawInput?: Buffer | string
+  ): Promise<PaymentAnalysisResult> {
+    return this.intelligenceEngine.analyze(context, rawInput);
   }
 
   public getDisplayName(): string {

@@ -5,6 +5,9 @@
 
 export type PaymentStatus =
   | 'pending'
+  | 'link_sent'
+  | 'customer_opened'
+  | 'processing'
   | 'initiated'
   | 'screenshot_uploaded'
   | 'pending_verification'
@@ -12,17 +15,68 @@ export type PaymentStatus =
   | 'captured'
   | 'failed'
   | 'rejected'
+  | 'expired'
   | 'refunded'
   | 'cancelled';
 
 export type PaymentMethod =
   | 'manual_upi'
+  | 'upi_intent'
+  | 'upi_qr'
+  | 'payment_link'
+  | 'card'
+  | 'netbanking'
   | 'razorpay'
+  | 'cashfree'
   | 'phonepe'
+  | 'payu'
+  | 'easebuzz'
   | 'stripe'
   | 'cash'
-  | 'card'
   | string; // extensible for future providers
+
+export type GatewayConfigStatus =
+  | 'connected'
+  | 'not_connected'
+  | 'configuration_error'
+  | 'invalid_credentials'
+  | 'webhook_missing'
+  | 'provider_offline';
+
+export interface RestaurantPaymentConfig {
+  id: string;
+  restaurantId: string;
+  providerName: string;
+  isEnabled: boolean;
+  isSandbox: boolean;
+  credentials: Record<string, any>;
+  status: GatewayConfigStatus;
+  statusMessage?: string | null;
+  lastHealthCheckAt?: string | null;
+  lastHealthCheckResponse?: Record<string, any> | null;
+  webhookSecret?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaymentAttemptHistory {
+  id: string;
+  paymentId: string;
+  orderId: string;
+  attemptNumber: number;
+  providerName: string;
+  paymentMethod: PaymentMethod;
+  amount: number;
+  currency: string;
+  status: PaymentStatus;
+  paymentLink?: string | null;
+  providerTransactionId?: string | null;
+  providerOrderId?: string | null;
+  failureReason?: string | null;
+  gatewayResponse?: Record<string, any> | null;
+  createdAt: string;
+  completedAt?: string | null;
+}
 
 export interface Payment {
   id: string;
@@ -38,6 +92,21 @@ export interface Payment {
   // Financials
   amount: number;
   currency: string;
+
+  // Payment Link & Orchestration
+  paymentLinkUrl?: string | null;
+  paymentLinkShortUrl?: string | null;
+
+  // Universal Provider Fields (Provider-Agnostic)
+  providerTransactionId?: string | null;
+  providerOrderId?: string | null;
+  exactFingerprint?: string | null;
+  similarityFingerprint?: string | null;
+  imageHash?: string | null;
+
+  // Analysis & Intelligence Audit Logs (Immutable History)
+  analysisHistory?: any[];
+  attemptsHistory?: PaymentAttemptHistory[];
 
   // Provider-specific data (opaque to core logic)
   gatewayData: Record<string, any>;
@@ -88,8 +157,17 @@ export interface CreatePaymentDto {
 // DTO for updating payment status
 export interface UpdatePaymentDto {
   paymentStatus?: PaymentStatus;
+  providerName?: string;
+  paymentLinkUrl?: string;
+  paymentLinkShortUrl?: string;
   gatewayData?: Record<string, any>;
   metadata?: Record<string, any>;
+  providerTransactionId?: string;
+  providerOrderId?: string;
+  exactFingerprint?: string;
+  similarityFingerprint?: string;
+  imageHash?: string;
+  analysisHistory?: any[];
   verifiedBy?: string;
   verificationNotes?: string;
   verifiedAt?: string;
@@ -101,3 +179,4 @@ export interface UpdatePaymentDto {
   failedAt?: string;
   expiresAt?: string;
 }
+

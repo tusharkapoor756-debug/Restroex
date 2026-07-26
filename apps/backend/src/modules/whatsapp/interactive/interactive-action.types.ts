@@ -46,5 +46,6 @@ export interface InteractiveScreen {
   };
   nextAction?: string;
   previousScreenId?: string;
+  inputPrompt?: boolean;
   metadata?: Record<string, any>;
 }
