@@ -28,6 +28,7 @@ interface RuntimeSession {
 }
 
 export class WhatsAppWebJsProvider implements WhatsAppProvider {
+  readonly providerType = 'webjs' as const;
   private readonly sessions = new Map<string, RuntimeSession>();
   private readonly sessionPath = process.env.WHATSAPP_SESSION_PATH || '.wwebjs_auth';
   private readonly minSendIntervalMs = Number(process.env.WHATSAPP_SEND_THROTTLE_MS || 900);
@@ -59,6 +60,7 @@ export class WhatsAppWebJsProvider implements WhatsAppProvider {
     session.resetAttempted = false;
     session.status = {
       restaurantId,
+      providerType: 'webjs',
       state: 'reconnecting',
       lastError: undefined,
     };
@@ -88,6 +90,7 @@ export class WhatsAppWebJsProvider implements WhatsAppProvider {
 
     const disconnected: WhatsAppSessionStatus = {
       restaurantId,
+      providerType: 'webjs',
       state: 'disconnected',
       lastDisconnectedAt: new Date().toISOString(),
     };
@@ -118,15 +121,16 @@ export class WhatsAppWebJsProvider implements WhatsAppProvider {
   public async getStatus(restaurantId: string): Promise<WhatsAppSessionStatus> {
     // If there's a live in-memory session, always trust it
     const session = this.sessions.get(restaurantId);
-    if (session) return session.status;
+    if (session) return { ...session.status, providerType: 'webjs' };
 
     // No in-memory session — check Redis
     const persisted = await redis.getClient().get(this.statusKey(restaurantId));
     if (!persisted) {
-      return { restaurantId, state: 'disconnected' };
+      return { restaurantId, providerType: 'webjs', state: 'disconnected' };
     }
 
     const status = JSON.parse(persisted) as WhatsAppSessionStatus;
+    status.providerType = 'webjs';
 
     // Only auto-restore if the previous session was active
     if (status.state === 'connected' || status.state === 'reconnecting') {

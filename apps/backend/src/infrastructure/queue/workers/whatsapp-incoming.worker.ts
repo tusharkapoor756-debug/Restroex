@@ -2,22 +2,18 @@ import { Worker } from 'bullmq';
 import { bullMQConfig } from '../bullmq.config';
 import { QueueName } from '../types/queue.types';
 import { logger } from '../../logger/logger';
-import { WhatsAppBotReplyService } from '../../../modules/whatsapp/bot-reply.service';
+import { messageDebouncer } from '../../../modules/whatsapp/message-debouncer.service';
 
 let worker: Worker | null = null;
 
 export const startWhatsAppIncomingWorker = (): Worker => {
   if (worker) return worker;
 
-  const bot = new WhatsAppBotReplyService();
-
   worker = new Worker(
     QueueName.WHATSAPP_INCOMING,
     async (job) => {
-      logger.info({ jobId: job.id, data: job.data }, 'Processing inbound WhatsApp bot message');
-      logger.info('BEFORE handleIncomingMessage');
-      await bot.handleIncomingMessage(job.data);
-      logger.info('AFTER handleIncomingMessage');
+      logger.info({ jobId: job.id, data: job.data }, 'Processing inbound WhatsApp bot message through debouncer');
+      await messageDebouncer.processOrBufferMessage(job.data);
     },
     {
       ...bullMQConfig,

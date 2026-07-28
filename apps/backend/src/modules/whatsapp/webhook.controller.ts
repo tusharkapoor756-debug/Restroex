@@ -83,6 +83,7 @@ export class WhatsAppWebhookController {
       }
 
       const wabaNumber = value?.metadata?.display_phone_number; // Business phone number
+      const phoneNumberId = value?.metadata?.phone_number_id; // Meta Phone Number ID
 
       let mediaId: string | null = null;
       let mediaType: string | null = null;
@@ -101,7 +102,7 @@ export class WhatsAppWebhookController {
         return;
       }
 
-      logger.info({ messageId, customerPhone, textBody, interactivePayload, mediaId, mediaType }, '📩 Received inbound WhatsApp message');
+      logger.info({ messageId, customerPhone, textBody, interactivePayload, mediaId, mediaType, phoneNumberId, wabaNumber }, '📩 Received inbound WhatsApp message');
 
       // 3. Prevent Duplicate Message Deliveries (Idempotency Key Check)
       const redisClient = redis.getClient();
@@ -113,20 +114,41 @@ export class WhatsAppWebhookController {
         return;
       }
 
-      // 4. Resolve Restaurant Tenant using the business phone number
+      // 4. Resolve Restaurant Tenant:
+      // First try matching Meta phone_number_id against restaurant_whatsapp_config (covers shared WABA restroex_managed & self_managed)
       const supabase = db.getClient();
-      const { data: restaurant, error } = await supabase
-        .from('restaurants')
-        .select('id')
-        .eq('phone_number', wabaNumber)
-        .maybeSingle();
+      let restaurantId: string | null = null;
 
-      if (error || !restaurant) {
-        logger.error({ wabaNumber, error }, '❌ Tenant lookup failed for WABA business number');
+      if (phoneNumberId) {
+        const { data: config } = await supabase
+          .from('restaurant_whatsapp_config')
+          .select('restaurant_id')
+          .eq('cloud_phone_number_id', phoneNumberId)
+          .maybeSingle();
+
+        if (config?.restaurant_id) {
+          restaurantId = config.restaurant_id;
+        }
+      }
+
+      // Fallback: match by display phone number on restaurants table
+      if (!restaurantId && wabaNumber) {
+        const { data: restaurant } = await supabase
+          .from('restaurants')
+          .select('id')
+          .eq('phone_number', wabaNumber)
+          .maybeSingle();
+
+        if (restaurant?.id) {
+          restaurantId = restaurant.id;
+        }
+      }
+
+      if (!restaurantId) {
+        logger.error({ wabaNumber, phoneNumberId }, '❌ Tenant lookup failed for incoming WhatsApp message');
         res.sendStatus(500);
         return;
       }
-      const restaurantId = restaurant.id;
 
       // 5. Enqueue the incoming message for asynchronous processing
       const jobPayload = {

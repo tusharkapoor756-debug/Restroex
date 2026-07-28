@@ -35,7 +35,14 @@ export class SettingsController {
       restaurantId,
       orderingMode: req.body.orderingMode,
       homeScreenItems: req.body.homeScreenItems,
+      providerType: req.body.providerType,
+      cloudPhoneNumberId: req.body.cloudPhoneNumberId,
+      cloudAccessToken: req.body.cloudAccessToken,
+      cloudWabaId: req.body.cloudWabaId,
+      webhookVerifyToken: req.body.webhookVerifyToken,
     });
+    const { whatsappProviderFactory } = require('../../whatsapp/providers/whatsapp-provider.factory');
+    await whatsappProviderFactory.invalidateCache(restaurantId);
     res.status(200).json({ success: true, data });
   };
 

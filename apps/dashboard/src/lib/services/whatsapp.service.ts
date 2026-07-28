@@ -46,7 +46,49 @@ export class WhatsAppService {
   /**
    * PUT /restaurants/settings/whatsapp-config
    */
-  static async updateWhatsAppConfig(config: { orderingMode: string; homeScreenItems: string[] }): Promise<any> {
+  static async updateWhatsAppConfig(config: {
+    orderingMode?: string;
+    homeScreenItems?: string[];
+    providerType?: "webjs" | "cloud_api";
+    billingMode?: "self_managed" | "restroex_managed";
+    numberVerificationStatus?: "pending" | "otp_sent" | "verified" | "failed";
+    cloudPhoneNumberId?: string;
+    cloudAccessToken?: string;
+    cloudWabaId?: string;
+    webhookVerifyToken?: string;
+  }): Promise<any> {
     return api.put<any>("/restaurants/settings/whatsapp-config", config);
+  }
+
+  /**
+   * POST /whatsapp/restroex-managed/register
+   * Registers a phone number under Restroex's WABA and requests an OTP code.
+   */
+  static async registerRestroexManaged(whatsappNumber: string, codeMethod: "SMS" | "VOICE" = "SMS"): Promise<any> {
+    return api.post<any>("/whatsapp/restroex-managed/register", { whatsappNumber, codeMethod });
+  }
+
+  /**
+   * POST /whatsapp/restroex-managed/verify
+   * Confirms the OTP code with Meta and activates Restroex-Managed Cloud API provider.
+   */
+  static async verifyRestroexManaged(otp: string): Promise<any> {
+    return api.post<any>("/whatsapp/restroex-managed/verify", { otp });
+  }
+
+  /**
+   * POST /whatsapp/restroex-managed/disconnect
+   * Deregisters the restaurant's phone number from Meta Cloud API and resets local DB row.
+   */
+  static async disconnectRestroexManaged(): Promise<any> {
+    return api.post<any>("/whatsapp/restroex-managed/disconnect");
+  }
+
+  /**
+   * POST /whatsapp/test-message
+   * Dispatches a real test message to verify WhatsApp provider delivery.
+   */
+  static async sendTestMessage(to: string, message: string): Promise<any> {
+    return api.post<any>("/whatsapp/test-message", { to, message });
   }
 }

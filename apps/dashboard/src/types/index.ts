@@ -248,6 +248,7 @@ export type WhatsAppConnectionState = 'connected' | 'disconnected' | 'reconnecti
 
 export interface WhatsAppSessionStatus {
   restaurantId: string;
+  providerType?: 'webjs' | 'cloud_api';
   state: WhatsAppConnectionState;
   qrCode?: string;
   qrCodeDataUrl?: string;

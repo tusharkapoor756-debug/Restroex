@@ -30,7 +30,6 @@ const restoreWhatsAppSessions = async () => {
   try {
     const redisClient = redis.getClient();
     const statusKeys = await redisClient.keys('whatsapp:session:*:status');
-    const provider = whatsappProviderFactory.getProvider();
 
     for (const key of statusKeys) {
       const raw = await redisClient.get(key);
@@ -41,7 +40,12 @@ const restoreWhatsAppSessions = async () => {
         if (!status.restaurantId) continue;
 
         if (status.state === 'connected' || status.state === 'reconnecting') {
-          await provider.connectSession(status.restaurantId);
+          const restaurantId = status.restaurantId;
+          logger.info({ restaurantId }, '⚡ Proactive boot warmup: Reconnecting WhatsApp session...');
+          // Non-blocking background reconnect pass
+          whatsappProviderFactory.getProviderForRestaurant(restaurantId)
+            .then((provider) => provider.connectSession(restaurantId))
+            .catch((err) => logger.warn({ err, restaurantId }, 'Proactive session warmup pass failed'));
         }
       } catch (error) {
         logger.warn({ key, error }, 'Skipping malformed WhatsApp session status during restore');
