@@ -12,4 +12,6 @@ export enum ConversationState {
   AWAITING_ADDRESS = 'awaiting_address',
   AWAITING_PROFILE_CONFIRMATION = 'awaiting_profile_confirmation',
   AWAITING_RECOVERY = 'awaiting_recovery',
+  AWAITING_ORDER_MODE = 'awaiting_order_mode',
+  AWAITING_TABLE_NUMBER = 'awaiting_table_number',
 }

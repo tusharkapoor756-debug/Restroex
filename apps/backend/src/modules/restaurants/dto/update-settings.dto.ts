@@ -26,9 +26,15 @@ export interface UpdateSettingsDto {
   onlinePaymentsEnabled?: boolean;
 
   // Store Settings
+  isOpen?: boolean;
   pickupAvailable?: boolean;
   prepTime?: number;
   pickupInstructions?: string;
+
+  // V1 Operations Engine Settings
+  supportedOrderModes?: string[];
+  maxActiveOrders?: number;
+  totalTables?: number;
 
   // New Settings Fields
   invoicePrefix?: string;

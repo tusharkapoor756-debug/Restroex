@@ -21,6 +21,8 @@ export class ConversationTransitions {
       NEED_VARIANT: ConversationState.AWAITING_VARIANT,
       SET_QUANTITY: ConversationState.AWAITING_QUANTITY,
       PROCEED_TO_CHECKOUT: ConversationState.AWAITING_CONFIRMATION,
+      SELECT_ORDER_MODE: ConversationState.AWAITING_ORDER_MODE,
+      PROVIDE_TABLE_NUMBER: ConversationState.AWAITING_TABLE_NUMBER,
     },
     [ConversationState.AWAITING_VARIANT]: {
       CHOOSE_VARIANT: ConversationState.AWAITING_QUANTITY,
@@ -29,10 +31,25 @@ export class ConversationTransitions {
       ITEM_ADDED: ConversationState.AWAITING_ITEM,
       SET_QUANTITY: ConversationState.AWAITING_ITEM, // Quantity locked, return to accept new items
       PROCEED_TO_CHECKOUT: ConversationState.AWAITING_CONFIRMATION,
+      SELECT_ORDER_MODE: ConversationState.AWAITING_ORDER_MODE,
+      PROVIDE_TABLE_NUMBER: ConversationState.AWAITING_TABLE_NUMBER,
     },
     [ConversationState.AWAITING_CONFIRMATION]: {
       CONFIRM_ORDER: ConversationState.AWAITING_PAYMENT,
+      SELECT_ORDER_MODE: ConversationState.AWAITING_ORDER_MODE,
+      PROVIDE_TABLE_NUMBER: ConversationState.AWAITING_TABLE_NUMBER,
       AWAIT_PAYMENT_SCREENSHOT: ConversationState.AWAITING_PAYMENT_SCREENSHOT,
+      ADD_MORE: ConversationState.AWAITING_ITEM,
+    },
+    [ConversationState.AWAITING_ORDER_MODE]: {
+      SELECT_ORDER_MODE: ConversationState.AWAITING_ORDER_MODE,
+      PROVIDE_TABLE_NUMBER: ConversationState.AWAITING_TABLE_NUMBER,
+      CONFIRM_ORDER: ConversationState.AWAITING_PAYMENT,
+      ADD_MORE: ConversationState.AWAITING_ITEM,
+    },
+    [ConversationState.AWAITING_TABLE_NUMBER]: {
+      PROVIDE_TABLE_NUMBER: ConversationState.AWAITING_TABLE_NUMBER,
+      CONFIRM_ORDER: ConversationState.AWAITING_PAYMENT,
       ADD_MORE: ConversationState.AWAITING_ITEM,
     },
     [ConversationState.AWAITING_PAYMENT]: {

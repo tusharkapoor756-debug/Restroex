@@ -20,7 +20,7 @@ export class ApiError extends Error {
   }
 }
 
-async function fetchApi<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+async function fetchApi<T>(endpoint: string, options: RequestOptions = {}, retries = 2): Promise<T> {
   const { requireAuth = true, headers, ...customConfig } = options;
 
   const config: RequestInit = {
@@ -63,6 +63,10 @@ async function fetchApi<T>(endpoint: string, options: RequestOptions = {}): Prom
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;
+    }
+    if (retries > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return fetchApi<T>(endpoint, options, retries - 1);
     }
     throw new ApiError((error as Error).message || "Network error");
   }

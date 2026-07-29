@@ -24,6 +24,11 @@ export interface SessionContext {
     id: string;
     options: Array<{ key: string; payload: any }>;
   };
+  // V1 Operations Engine Session Freeze Fields (REVISION 4: Snapshotted at turn start)
+  orderType?: 'takeaway' | 'dining';
+  tableNumber?: number;
+  snapshotSupportedOrderModes?: string[];
+  snapshotTotalTables?: number;
 }
 
 export interface ConversationSession {
@@ -49,6 +54,8 @@ export type FSMEventName =
   | 'CHOOSE_VARIANT'
   | 'SET_QUANTITY'
   | 'PROCEED_TO_CHECKOUT'
+  | 'SELECT_ORDER_MODE'
+  | 'PROVIDE_TABLE_NUMBER'
   | 'CONFIRM_ORDER'
   | 'ADD_MORE'
   | 'AWAIT_PAYMENT_SCREENSHOT'

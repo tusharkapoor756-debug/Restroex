@@ -160,6 +160,10 @@ export class SettingsService {
     }
 
     // ─── Store Settings Validation ───────────────────────────────────────────
+    if (dto.isOpen !== undefined) {
+      settings.isOpen = !!dto.isOpen;
+    }
+
     if (dto.pickupAvailable !== undefined) {
       settings.pickupAvailable = !!dto.pickupAvailable;
     }
@@ -174,6 +178,41 @@ export class SettingsService {
 
     if (dto.pickupInstructions !== undefined) {
       settings.pickupInstructions = dto.pickupInstructions ? String(dto.pickupInstructions).trim() : undefined;
+    }
+
+    // ─── V1 Operations Engine Settings Validation ─────────────────────────────
+    if (dto.supportedOrderModes !== undefined) {
+      if (!Array.isArray(dto.supportedOrderModes)) {
+        throw new BadRequestError('supportedOrderModes must be an array of strings');
+      }
+      const modes = dto.supportedOrderModes.map((m) => String(m).trim().toLowerCase()).filter(Boolean);
+      const validModes = ['takeaway', 'dining'];
+      for (const m of modes) {
+        if (!validModes.includes(m)) {
+          throw new BadRequestError(`Invalid order mode "${m}". Supported modes: ${validModes.join(', ')}`);
+        }
+      }
+      // REVISION 2: Prevent saving settings if zero order modes are enabled!
+      if (modes.length === 0) {
+        throw new BadRequestError('At least one order mode (Takeaway or Dining) must remain enabled.');
+      }
+      settings.supportedOrderModes = modes;
+    }
+
+    if (dto.maxActiveOrders !== undefined) {
+      const max = Math.round(Number(dto.maxActiveOrders));
+      if (isNaN(max) || max < 1) {
+        throw new BadRequestError('Maximum active orders capacity must be a positive integer (at least 1)');
+      }
+      settings.maxActiveOrders = max;
+    }
+
+    if (dto.totalTables !== undefined) {
+      const tables = Math.round(Number(dto.totalTables));
+      if (isNaN(tables) || tables < 1) {
+        throw new BadRequestError('Total tables count must be a positive integer (at least 1)');
+      }
+      settings.totalTables = tables;
     }
 
     // ─── New Settings Validation ─────────────────────────────────────────────

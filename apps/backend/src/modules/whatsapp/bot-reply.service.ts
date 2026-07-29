@@ -71,10 +71,74 @@ export class WhatsAppBotReplyService {
 
     try {
       await this.sessionService.runPipelineLocked(restaurantId, customerPhone, async () => {
+        // ── PART 3 — STORE STATUS GATE ───────────────────────────────────────
+        // Executes BEFORE conversation, FSM, AI, Cart or Checkout starts.
+        const settingsRepo = new (require('../restaurants/repositories/settings.repository').SettingsRepository)();
+        const settingsData = await settingsRepo.getSettings(restaurantId);
+        const settings = settingsData?.settings;
+
+        logger.info(
+          { restaurantId, customerPhone, isOpen: settings?.isOpen, rawSettings: settings },
+          '🔍 [Store Status Gatekeeper] Evaluated restaurant store status'
+        );
+
+        if (settings && settings.isOpen === false) {
+          logger.info({ restaurantId, customerPhone }, '⛔ [Store Status Gatekeeper] Store is closed (isOpen === false). Halting pipeline immediately.');
+          await this.messages.sendText(
+            restaurantId,
+            customerPhone,
+            "We're currently closed. Please visit us during our opening hours."
+          );
+          logger.info({ restaurantId, customerPhone }, '🛑 [Store Status Gatekeeper] Pipeline halted. Early return executed.');
+          return; // Stop pipeline immediately. Do NOT continue to FSM, AI, Cart, Checkout.
+        } else {
+          logger.info({ restaurantId, customerPhone, isOpen: settings?.isOpen }, '✅ [Store Status Gatekeeper] Store is OPEN. Proceeding to pipeline.');
+        }
+
+        // ── PART 4 — CAPACITY GATE ───────────────────────────────────────────
+        // REVISION 1: Only count orders with statuses: received, accepted, preparing.
+        // Excludes checkout_pending, payment_pending, paid, ready, completed, cancelled.
+        const orderRepo = new (require('../orders/repositories/order.repository').OrderRepository)();
+        const activeKitchenOrdersCount = await orderRepo.getActiveKitchenOrdersCount(restaurantId);
+        const maxActiveCapacity = settings?.maxActiveOrders ?? 20;
+
+        if (activeKitchenOrdersCount >= maxActiveCapacity) {
+          logger.info(
+            { restaurantId, customerPhone, activeKitchenOrdersCount, maxActiveCapacity },
+            '⛔ Capacity Gate: High active kitchen workload. Halting pipeline.'
+          );
+          await this.messages.sendText(
+            restaurantId,
+            customerPhone,
+            "We're currently experiencing a high number of orders. Please try again after some time."
+          );
+          return; // Stop pipeline immediately.
+        }
+
         // ── Memory: persist inbound user message (fire-and-forget) ───────────
         conversationMemoryService.saveMessage(restaurantId, customerPhone, 'user', text).catch(() => undefined);
 
         let session = await this.sessionService.getSession(restaurantId, customerPhone);
+
+        // ── REVISION 4 — SESSION CONFIGURATION FREEZE ───────────────────────
+        // Lock restaurant settings snapshots into session context at conversation start
+        // so ongoing conversations are never corrupted when owner modifies store settings mid-flow.
+        if (session.state === ConversationState.IDLE || !session.context?.snapshotSupportedOrderModes) {
+          const modesSnapshot = settings?.supportedOrderModes || ['takeaway', 'dining'];
+          const tablesSnapshot = settings?.totalTables || 25;
+          await this.sessionService.executeSessionAction(restaurantId, customerPhone, async (sess) => {
+            return {
+              event: {
+                name: 'ADD_MORE', // Maintains state while mutating context
+              },
+              callback: async (s) => {
+                s.context.snapshotSupportedOrderModes = modesSnapshot;
+                s.context.snapshotTotalTables = tablesSnapshot;
+              },
+            };
+          });
+          session = await this.sessionService.getSession(restaurantId, customerPhone);
+        }
       
       // ── Validate FSM state against database entities to prevent stuck states ──
       if (session.state === ConversationState.AWAITING_PAYMENT_SCREENSHOT || session.state === ConversationState.AWAITING_PAYMENT) {
@@ -275,75 +339,57 @@ export class WhatsAppBotReplyService {
       const { customerService } = require('../customers/services/customer.service');
       let customer = await customerService.getOrCreateCustomer(restaurantId, customerPhone);
 
-      // Onboarding State Handlers
-      if (session.state === ConversationState.AWAITING_NAME) {
-        if (!text) {
-          await this.messages.sendText(restaurantId, customerPhone, 'Please reply with your name.');
-          return;
-        }
-        await customerService.updateCustomerProfile(customer.id, { name: text });
-        await this.sessionService.executeSessionAction(restaurantId, customerPhone, async () => ({
-          event: { name: 'PROVIDE_NAME' }
-        }));
-        await this.messages.sendText(restaurantId, customerPhone, `Thanks ${text}! Please reply with your delivery Address.`);
-        return;
-      }
-
-      if (session.state === ConversationState.AWAITING_ADDRESS) {
-        if (!text) {
-          await this.messages.sendText(restaurantId, customerPhone, 'Please reply with your address.');
-          return;
-        }
-        await customerService.updateCustomerProfile(customer.id, { address: text });
-        await this.sessionService.executeSessionAction(restaurantId, customerPhone, async () => ({
-          event: { name: 'PROVIDE_ADDRESS' }
-        }));
-
-        // Render confirmation message
-        customer = await customerService.findById(customer.id);
-        const confirmText = `Verify Profile:\n\n👤 *Name:* ${customer.name}\n📍 *Address:* ${customer.address}\n\nIs this correct? Reply "yes" to confirm, or "edit" to change it.`;
-        await this.messages.sendText(restaurantId, customerPhone, confirmText);
-        return;
-      }
-
-      if (session.state === ConversationState.AWAITING_PROFILE_CONFIRMATION) {
+      // ── V1 OPERATIONS ENGINE — STATE HANDLERS (Order Modes & Table Validation) ──
+      if (session.state === ConversationState.AWAITING_ORDER_MODE) {
         const cleanText = text.toLowerCase().trim();
-        if (cleanText === 'yes' || cleanText === 'confirm') {
-          await this.sessionService.executeSessionAction(restaurantId, customerPhone, async () => ({
-            event: { name: 'CONFIRM_PROFILE' }
-          }));
-          await this.messages.sendText(restaurantId, customerPhone, '✅ Profile confirmed. Let\'s continue with your order.');
-          // Redirect to menu browse
-          await interactiveOrderingService.handleInteractiveClick(restaurantId, customerPhone, { a: 'home' });
-          return;
-        } else if (cleanText === 'edit' || cleanText === 'no') {
-          await this.sessionService.executeSessionAction(restaurantId, customerPhone, async () => ({
-            event: { name: 'EDIT_PROFILE' }
-          }));
-          await this.messages.sendText(restaurantId, customerPhone, 'Let\'s correct it. What is your Name?');
-          return;
-        } else {
-          await this.messages.sendText(restaurantId, customerPhone, 'Please reply with "yes" or "edit".');
+        let selectedMode: 'takeaway' | 'dining' | undefined = undefined;
+
+        if (cleanText === '1' || cleanText === 'dining' || cleanText.includes('dine')) {
+          selectedMode = 'dining';
+        } else if (cleanText === '2' || cleanText === 'takeaway' || cleanText.includes('pickup') || cleanText.includes('take')) {
+          selectedMode = 'takeaway';
+        }
+
+        if (!selectedMode) {
+          await this.messages.sendText(
+            restaurantId,
+            customerPhone,
+            'Please choose how you would like your order:\n\n1️⃣ *Dining*\n2️⃣ *Takeaway*\n\nReply with *1* or *2*.'
+          );
           return;
         }
+
+        await this.sessionService.executeSessionAction(restaurantId, customerPhone, async () => ({
+          event: { name: 'SELECT_ORDER_MODE', payload: { orderType: selectedMode } }
+        }));
+
+        // Trigger checkout again to advance to Table Number or Order Summary
+        await interactiveOrderingService.handleInteractiveClick(restaurantId, customerPhone, { a: 'checkout' });
+        return;
       }
 
-      // Check if existing customer has incomplete profile
-      if (!customer.name || !customer.address) {
-        logger.info({ customerId: customer.id }, 'Customer profile is incomplete. Triggering onboarding.');
-        // Use a proper FSM transition (IDLE → AWAITING_NAME) instead of raw SQL override
+      if (session.state === ConversationState.AWAITING_TABLE_NUMBER) {
+        // REVISION 3: Explicit integer validation between 1 and totalTables
+        const totalTables = session.context.snapshotTotalTables || settings?.totalTables || 25;
+        const cleanText = text.trim();
+        const parsedTable = parseInt(cleanText, 10);
+        const isValidInteger = /^\d+$/.test(cleanText) && !isNaN(parsedTable) && parsedTable >= 1 && parsedTable <= totalTables;
+
+        if (!isValidInteger) {
+          await this.messages.sendText(
+            restaurantId,
+            customerPhone,
+            `Please enter a valid table number (between 1 and ${totalTables}).`
+          );
+          return;
+        }
+
         await this.sessionService.executeSessionAction(restaurantId, customerPhone, async () => ({
-          event: { name: 'RESET' } // First reset to IDLE so we can START_ONBOARDING from a clean state
-        }));
-        await this.sessionService.executeSessionAction(restaurantId, customerPhone, async () => ({
-          event: { name: 'START_ONBOARDING' } // IDLE → AWAITING_NAME via FSM
+          event: { name: 'PROVIDE_TABLE_NUMBER', payload: { tableNumber: parsedTable } }
         }));
 
-        await this.messages.sendText(
-          restaurantId,
-          customerPhone,
-          'Welcome to Restroex! 🍽️\n\nLet\'s setup your ordering profile. What is your Name?'
-        );
+        // Advance checkout to final summary and payment
+        await interactiveOrderingService.handleInteractiveClick(restaurantId, customerPhone, { a: 'checkout' });
         return;
       }
 
@@ -401,10 +447,8 @@ export class WhatsAppBotReplyService {
         await this.sessionService.executeSessionAction(restaurantId, customerPhone, async () => ({
           event: { name: 'RESET' }
         }));
-        await this.sessionService.executeSessionAction(restaurantId, customerPhone, async () => ({
-          event: { name: 'START_ONBOARDING' } // IDLE → AWAITING_NAME via FSM
-        }));
-        await this.messages.sendText(restaurantId, customerPhone, 'Let\'s update your profile. What is your Name?');
+        await this.messages.sendText(restaurantId, customerPhone, 'Profile updated! Let\'s continue with your order.');
+        await interactiveOrderingService.handleInteractiveClick(restaurantId, customerPhone, { a: 'home' });
         return;
       }
 
@@ -570,10 +614,62 @@ export class WhatsAppBotReplyService {
 
         // 1D. Interactive-only mode / unmatched text: show validation & re-render active screen
         if (config.orderingMode === 'interactive_only') {
-          const session = await this.sessionService.getSession(restaurantId, customerPhone);
-          const lastScreen = session.context.lastInteractiveScreen;
-          const currentPayload = lastScreen?.options?.[0]?.payload || { a: 'home' };
+          const latestSession = await this.sessionService.getSession(restaurantId, customerPhone);
+          const lastScreen = latestSession.context.lastInteractiveScreen;
 
+          // ── FREE-TEXT INPUT SCREENS ─────────────────────────────────────────
+          // table_number_prompt and order_mode_selection accept plain numeric
+          // input. These MUST NOT be trapped by the "Invalid choice" handler.
+          // Inline handling here acts as a safety net even if the DB-mapped state
+          // hasn't reconstructed via mapToDomain (e.g. first deployment).
+          if (lastScreen?.id === 'table_number_prompt') {
+            const totalTables = latestSession.context.snapshotTotalTables || settings?.totalTables || 25;
+            const cleanText = text.trim();
+            const parsedTable = parseInt(cleanText, 10);
+            const isValidInteger = /^\d+$/.test(cleanText) && !isNaN(parsedTable) && parsedTable >= 1 && parsedTable <= totalTables;
+
+            if (!isValidInteger) {
+              await this.messages.sendText(
+                restaurantId,
+                customerPhone,
+                `Please enter a valid table number between 1 and ${totalTables}.`
+              );
+              return;
+            }
+
+            await this.sessionService.executeSessionAction(restaurantId, customerPhone, async () => ({
+              event: { name: 'PROVIDE_TABLE_NUMBER', payload: { tableNumber: parsedTable } }
+            }));
+            await interactiveOrderingService.handleInteractiveClick(restaurantId, customerPhone, { a: 'checkout' });
+            return;
+          }
+
+          if (lastScreen?.id === 'order_mode_selection') {
+            const cleanText = text.toLowerCase().trim();
+            const supportedModes: string[] = latestSession.context?.snapshotSupportedOrderModes || ['dining', 'takeaway'];
+            const modeByIndex = supportedModes[parseInt(cleanText, 10) - 1];
+            const modeByName = supportedModes.find(m => m.toLowerCase() === cleanText || cleanText.includes(m));
+            const selectedMode = modeByIndex || modeByName;
+
+            if (!selectedMode) {
+              const optionLines = supportedModes.map((m, i) => `${i + 1}️⃣ *${m.charAt(0).toUpperCase() + m.slice(1)}*`).join('\n');
+              await this.messages.sendText(
+                restaurantId,
+                customerPhone,
+                `Please choose a valid order mode:\n\n${optionLines}\n\nReply with the number.`
+              );
+              return;
+            }
+
+            await this.sessionService.executeSessionAction(restaurantId, customerPhone, async () => ({
+              event: { name: 'SELECT_ORDER_MODE', payload: { orderType: selectedMode } }
+            }));
+            await interactiveOrderingService.handleInteractiveClick(restaurantId, customerPhone, { a: 'checkout' });
+            return;
+          }
+
+          // Non-free-text screen: show "Invalid choice" and re-render
+          const currentPayload = lastScreen?.options?.[0]?.payload || { a: 'home' };
           await this.messages.sendText(
             restaurantId,
             customerPhone,
@@ -582,6 +678,8 @@ export class WhatsAppBotReplyService {
           await interactiveOrderingService.handleInteractiveClick(restaurantId, customerPhone, currentPayload);
           return;
         }
+
+
       }
 
       // ─────────────────────────────────────────────────────────────────────

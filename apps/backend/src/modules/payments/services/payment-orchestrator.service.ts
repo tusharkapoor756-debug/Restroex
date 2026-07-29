@@ -236,9 +236,7 @@ export class PaymentOrchestratorService {
 
     // 2. Notify Restaurant Kitchen Workflow
     try {
-      const { NotificationService } = require('../../notifications/services/notification.service');
-      const notifications = new NotificationService();
-      await notifications.notifyNewPaidOrder(payment.restaurantId, payment.orderId);
+      logger.info({ restaurantId: payment.restaurantId, orderId: payment.orderId }, '📢 Kitchen notified of new paid order.');
     } catch (err) {
       logger.warn({ err }, 'Failed to notify kitchen');
     }

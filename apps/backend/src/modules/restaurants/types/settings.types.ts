@@ -18,9 +18,15 @@ export interface RestaurantSettings {
   onlinePaymentsEnabled: boolean;
 
   // Store Settings
+  isOpen: boolean;
   pickupAvailable: boolean;
   prepTime: number; // in minutes
   pickupInstructions?: string;
+
+  // V1 Operations Engine Settings
+  supportedOrderModes: string[]; // e.g. ['takeaway', 'dining'] or ['takeaway'] or ['dining']
+  maxActiveOrders: number; // Maximum active kitchen capacity (received, accepted, preparing)
+  totalTables: number; // Total physical dining tables for validation
 
   // New Settings Fields
   invoicePrefix?: string;

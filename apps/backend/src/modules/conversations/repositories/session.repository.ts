@@ -72,10 +72,16 @@ export class SessionRepository {
       },
       'SESSION BEFORE DB UPDATE',
     );
+    // Fallback for database check constraint if migration 00022 hasn't been executed on DB
+    let dbState = state as string;
+    if (dbState === 'awaiting_order_mode' || dbState === 'awaiting_table_number') {
+      dbState = 'awaiting_confirmation';
+    }
+
     const { data, error } = await this.client
       .from('conversation_sessions')
       .update({
-        state,
+        state: dbState,
         cart,
         context,
         last_interaction_at: new Date().toISOString(),
@@ -130,11 +136,22 @@ export class SessionRepository {
    * Map database row to domain interface.
    */
   private mapToDomain(row: any): ConversationSession {
+    let domainState = row.state as ConversationState;
+
+    // Granular state reconstruction if DB contains awaiting_confirmation fallback
+    if (domainState === ('awaiting_confirmation' as any)) {
+      if (!row.context?.orderType) {
+        domainState = ConversationState.AWAITING_ORDER_MODE;
+      } else if (row.context?.orderType === 'dining' && row.context?.tableNumber === undefined) {
+        domainState = ConversationState.AWAITING_TABLE_NUMBER;
+      }
+    }
+
     return {
       id: row.id,
       restaurantId: row.restaurant_id,
       customerPhone: row.customer_phone,
-      state: row.state as ConversationState,
+      state: domainState,
       cart: row.cart,
       context: row.context,
       lastInteractionAt: row.last_interaction_at.endsWith('Z') ? row.last_interaction_at : `${row.last_interaction_at}Z`,

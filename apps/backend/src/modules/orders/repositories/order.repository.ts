@@ -43,8 +43,9 @@ export class OrderRepository {
   }
 
   /**
-   * Finds the latest ACTIVE (non-terminal) order matching the exact idempotency key
-   * or key prefix. Ignores terminal orders (cancelled, completed, refunded).
+   * Finds the latest ACTIVE pending-checkout order matching the exact idempotency key.
+   * Only orders in checkout_pending or payment_pending are active for payment link retries.
+   * Orders already paid, accepted, preparing, ready, completed, or cancelled are finished checkout!
    */
   public async findActiveByIdempotencyKey(key: string): Promise<Order | null> {
     const { data, error } = await this.client
@@ -55,8 +56,8 @@ export class OrderRepository {
 
     if (error || !data || data.length === 0) return null;
 
-    const TERMINAL_STATUSES: OrderStatus[] = ['cancelled', 'completed', 'refunded'];
-    const activeRow = data.find((row) => !TERMINAL_STATUSES.includes(row.status as OrderStatus));
+    const CHECKOUT_PENDING_STATUSES: OrderStatus[] = ['checkout_pending', 'payment_pending'];
+    const activeRow = data.find((row) => CHECKOUT_PENDING_STATUSES.includes(row.status as OrderStatus));
 
     if (!activeRow) return null;
     return this.mapToDomain(activeRow);
@@ -102,6 +103,27 @@ export class OrderRepository {
     }
 
     return (data || []).map((row: any) => this.mapToDomain(row));
+  }
+
+  /**
+   * REVISION 1: Counts active kitchen workload orders.
+   * Only counts orders with statuses: received, accepted, preparing.
+   * Excludes checkout_pending, payment_pending, paid, ready, completed, cancelled.
+   */
+  public async getActiveKitchenOrdersCount(restaurantId: string): Promise<number> {
+    const activeWorkloadStatuses = ['received', 'accepted', 'preparing'];
+
+    const { count, error } = await this.client
+      .from('orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('restaurant_id', restaurantId)
+      .in('status', activeWorkloadStatuses);
+
+    if (error) {
+      throw new Error(`Failed to count active kitchen workload orders: ${error.message}`);
+    }
+
+    return count || 0;
   }
 
   public async findOrderHistory(
@@ -220,6 +242,8 @@ export class OrderRepository {
         human_readable_id: humanReadableId,
         receipt_snapshot: receiptSnapshot,
         customer_id: orderData.customerId,
+        order_type: orderData.orderType || 'takeaway',
+        table_number: orderData.tableNumber || null,
       })
       .select('*')
       .single();
@@ -361,12 +385,16 @@ export class OrderRepository {
       completedAt: row.completed_at,
       cancelledAt: row.cancelled_at,
       invoiceNumber: row.invoice_number,
+      orderType: row.order_type || 'takeaway',
+      tableNumber: row.table_number ? Number(row.table_number) : null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
-      items,
       customerId: row.customer_id,
       customerName: row.customer?.name || row.customer_name || null,
+      customerAddress: row.customer?.address || row.customer_address || null,
       payment,
     };
   }
 }
+// Repositories updated cleanly.
+

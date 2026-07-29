@@ -199,6 +199,18 @@ export class ConversationEngine {
         }
         break;
 
+      case 'SELECT_ORDER_MODE':
+        if (event.payload?.orderType) {
+          updatedContext.orderType = event.payload.orderType;
+        }
+        break;
+
+      case 'PROVIDE_TABLE_NUMBER':
+        if (event.payload?.tableNumber !== undefined) {
+          updatedContext.tableNumber = event.payload.tableNumber;
+        }
+        break;
+
       case 'CONFIRM_ORDER':
         // Ready for payment
         break;

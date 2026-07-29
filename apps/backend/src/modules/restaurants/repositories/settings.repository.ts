@@ -143,6 +143,7 @@ export class SettingsRepository {
       if (settingsUpdate.upiMerchantName !== undefined) settingsPayload.upi_merchant_name = settingsUpdate.upiMerchantName;
       if (settingsUpdate.upiId !== undefined) settingsPayload.upi_id = settingsUpdate.upiId;
       if (settingsUpdate.upiQrImageUrl !== undefined) settingsPayload.upi_qr_image_url = settingsUpdate.upiQrImageUrl;
+      if (settingsUpdate.isOpen !== undefined) settingsPayload.is_open = settingsUpdate.isOpen;
       if (settingsUpdate.pickupAvailable !== undefined) settingsPayload.pickup_available = settingsUpdate.pickupAvailable;
       if (settingsUpdate.prepTime !== undefined) settingsPayload.prep_time = settingsUpdate.prepTime;
       if (settingsUpdate.pickupInstructions !== undefined) settingsPayload.pickup_instructions = settingsUpdate.pickupInstructions;
@@ -159,6 +160,9 @@ export class SettingsRepository {
       if (settingsUpdate.codEnabled !== undefined) settingsPayload.cod_enabled = settingsUpdate.codEnabled;
       if (settingsUpdate.manualUpiEnabled !== undefined) settingsPayload.manual_upi_enabled = settingsUpdate.manualUpiEnabled;
       if (settingsUpdate.onlinePaymentsEnabled !== undefined) settingsPayload.online_payments_enabled = settingsUpdate.onlinePaymentsEnabled;
+      if (settingsUpdate.supportedOrderModes !== undefined) settingsPayload.supported_order_modes = settingsUpdate.supportedOrderModes;
+      if (settingsUpdate.maxActiveOrders !== undefined) settingsPayload.max_active_orders = settingsUpdate.maxActiveOrders;
+      if (settingsUpdate.totalTables !== undefined) settingsPayload.total_tables = settingsUpdate.totalTables;
 
       const { error: settingsError } = await this.client
         .from('restaurant_settings')
@@ -201,6 +205,7 @@ export class SettingsRepository {
         upiMerchantName: settingsRow.upi_merchant_name || undefined,
         upiId: settingsRow.upi_id || undefined,
         upiQrImageUrl: settingsRow.upi_qr_image_url || undefined,
+        isOpen: settingsRow.is_open ?? true,
         pickupAvailable: settingsRow.pickup_available ?? true,
         prepTime: settingsRow.prep_time !== undefined ? Number(settingsRow.prep_time) : 15,
         pickupInstructions: settingsRow.pickup_instructions || undefined,
@@ -216,6 +221,9 @@ export class SettingsRepository {
         codEnabled: settingsRow.cod_enabled ?? false,
         manualUpiEnabled: settingsRow.manual_upi_enabled ?? true,
         onlinePaymentsEnabled: settingsRow.online_payments_enabled ?? false,
+        supportedOrderModes: settingsRow.supported_order_modes || ['takeaway', 'dining'],
+        maxActiveOrders: settingsRow.max_active_orders !== undefined ? Number(settingsRow.max_active_orders) : 20,
+        totalTables: settingsRow.total_tables !== undefined ? Number(settingsRow.total_tables) : 25,
         createdAt: settingsRow.created_at,
         updatedAt: settingsRow.updated_at,
       }

@@ -1,4 +1,5 @@
 import { CompactPayload, InteractiveScreen } from './interactive-action.types';
+import { logger } from '../../../infrastructure/logger/logger';
 import { InteractiveHomeHandler } from './handlers/home.handler';
 import { InteractiveBrowseHandler } from './handlers/browse.handler';
 import { InteractiveCartHandler } from './handlers/cart.handler';
@@ -124,6 +125,16 @@ export class ScreenManager {
         screen = await this.checkoutHandler.execute(restaurantId, customerPhone);
         break;
 
+      case 'select_mode': {
+        const selectedMode = (payload as any).mode || 'takeaway';
+        const sessionSvc = new SessionService();
+        await sessionSvc.executeSessionAction(restaurantId, customerPhone, async () => ({
+          event: { name: 'SELECT_ORDER_MODE', payload: { orderType: selectedMode } }
+        }));
+        screen = await this.checkoutHandler.execute(restaurantId, customerPhone);
+        break;
+      }
+
       case 'cancel_order': {
         const sessionService = new SessionService();
         const session = await sessionService.getSession(restaurantId, customerPhone);
@@ -196,6 +207,16 @@ export class ScreenManager {
       const serialized = JSON.stringify(payload);
       await this.navigationHandler.pushScreen(restaurantId, customerPhone, serialized);
     }
+
+    logger.info(
+      {
+        screenId: screen.id,
+        title: screen.title,
+        buttons: screen.buttons,
+        listSections: screen.list?.sections?.length,
+      },
+      '📱 [Lifecycle 1/4] Screen object created'
+    );
 
     return screen;
   }

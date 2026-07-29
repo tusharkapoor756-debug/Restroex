@@ -13,13 +13,16 @@ export class SettingsController {
 
   public getSettings = async (req: Request, res: Response): Promise<void> => {
     const restaurantId = this.getRestaurantId(req);
+    console.log(`📥 [SettingsController] GET /api/v1/restaurants/settings requested for restaurantId: ${restaurantId}`);
     const data = await this.settingsService.getSettings(restaurantId);
     res.status(200).json({ success: true, data });
   };
 
   public updateSettings = async (req: Request, res: Response): Promise<void> => {
     const restaurantId = this.getRestaurantId(req);
+    console.log(`📥 [SettingsController] PATCH /api/v1/restaurants/settings requested for restaurantId: ${restaurantId}. Body:`, req.body);
     const data = await this.settingsService.updateSettings(restaurantId, req.body || {});
+    console.log(`✅ [SettingsController] PATCH /api/v1/restaurants/settings successfully updated database for restaurantId: ${restaurantId}`);
     res.status(200).json({ success: true, data });
   };
 

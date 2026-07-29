@@ -150,6 +150,7 @@ export class ReceiptRenderService {
         <main class="thermal-receipt" aria-label="Thermal receipt ${this.escape(snapshot.humanReadableId)}">
           <header class="center">
             <strong class="brand">RESTROEX</strong>
+            ${order.orderType === 'dining' ? `<strong style="font-size: 16px; margin: 4px 0;">*** DINING - TABLE ${order.tableNumber || '?'} ***</strong>` : `<strong style="font-size: 16px; margin: 4px 0;">*** TAKEAWAY ORDER ***</strong>`}
             <span>KITCHEN RECEIPT</span>
             <span class="muted">${generatedAt}</span>
           </header>

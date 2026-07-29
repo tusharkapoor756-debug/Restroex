@@ -28,7 +28,7 @@ export class InteractiveOrderingService {
       const restaurant = await this.restaurantRepo.findById(restaurantId);
       const restaurantName = restaurant?.name || 'Our Restaurant';
 
-      // 1. Build the next screen dynamically
+      // 1. Build the next screen dynamically based on current FSM state
       const screen = await screenManager.buildScreen(
         restaurantId,
         restaurantName,
@@ -36,10 +36,11 @@ export class InteractiveOrderingService {
         payload
       );
 
-      // 2. Format reply as numbered text menu (whatsapp-web.js fallback)
+      // 2. Single Source of Truth: Format reply text & generate option map
       const { text, optionsMap } = ReplyBuilder.buildTextFallback(screen);
 
-      // 3. Persist the options map in session context for matching on next text reply
+      // 3. MANDATORY STRICT STEP: Persist options map to session context BEFORE sending WhatsApp message!
+      // Flow: State updated -> Screen generated -> Session committed -> Message sent
       await this.sessionRepository.patchContext(restaurantId, customerPhone, {
         lastInteractiveScreen: {
           id: screen.id,
@@ -47,7 +48,12 @@ export class InteractiveOrderingService {
         },
       });
 
-      // 4. Send message
+      logger.info(
+        { restaurantId, customerPhone, screenId: screen.id, optionsCount: optionsMap.length, optionsMap },
+        '💾 [Lifecycle 3/4] Screen object persisted into session context'
+      );
+
+      // 4. Send message after persistence commit succeeds
       await this.messageService.sendText(restaurantId, customerPhone, text);
     } catch (error: any) {
       logger.error({ error, message: error?.message, stack: error?.stack, restaurantId, customerPhone }, 'Interactive message processing failed');
@@ -77,6 +83,17 @@ export class InteractiveOrderingService {
       }
 
       const cleanText = text.trim().toLowerCase();
+
+      logger.info(
+        {
+          restaurantId,
+          customerPhone,
+          screenId: lastScreen.id,
+          options: lastScreen.options,
+          inputText: cleanText,
+        },
+        '⚙️ [Lifecycle 4/4] Screen object used by Interactive Engine'
+      );
 
       // ─────────────────────────────────────────────────────────────────────
       // SCREEN TYPE A — Quantity Input Prompt Screen

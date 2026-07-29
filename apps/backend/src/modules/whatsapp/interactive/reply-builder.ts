@@ -1,4 +1,5 @@
 import { InteractiveScreen } from './interactive-action.types';
+import { logger } from '../../../infrastructure/logger/logger';
 
 export class ReplyBuilder {
   /**
@@ -23,28 +24,35 @@ export class ReplyBuilder {
     const optionsMap: Array<{ key: string; payload: any }> = [];
     let optionCounter = 1;
 
-    // Add buttons as numbered card options
+    // Add buttons as options
     if (screen.buttons && screen.buttons.length > 0) {
       for (const btn of screen.buttons) {
         try {
           const payloadObj = JSON.parse(btn.id);
-          if (btn.title !== 'context_holder') {
-            body += `【${optionCounter}】 *${btn.title}*\n`;
-            optionsMap.push({
-              key: optionCounter.toString(),
-              payload: payloadObj,
-            });
-            optionsMap.push({
-              key: btn.title.toLowerCase().trim(),
-              payload: payloadObj,
-            });
-            optionCounter++;
-          } else {
-            optionsMap.push({
-              key: 'context_holder',
-              payload: payloadObj,
-            });
+          const action = payloadObj.a || '';
+          
+          if (btn.title === 'context_holder') {
+            optionsMap.push({ key: 'context_holder', payload: payloadObj });
+            continue;
           }
+
+          // Reserved Navigation Actions
+          let assignedKey = '';
+          if (action === 'back') {
+            assignedKey = 'B';
+          } else if (action === 'home') {
+            assignedKey = 'H';
+          } else if (action === 'cancel' || action === 'cancel_order') {
+            assignedKey = 'C';
+          } else {
+            assignedKey = optionCounter.toString();
+            optionCounter++;
+          }
+
+          body += `【${assignedKey}】 *${btn.title}*\n`;
+
+          optionsMap.push({ key: assignedKey.toLowerCase(), payload: payloadObj });
+          optionsMap.push({ key: btn.title.toLowerCase().trim(), payload: payloadObj });
         } catch (e) {
           // Fallback if not valid JSON
         }
@@ -60,21 +68,28 @@ export class ReplyBuilder {
         for (const row of section.rows) {
           try {
             const payloadObj = JSON.parse(row.id);
-            body += `【${optionCounter}】 *${row.title}*`;
+            const action = payloadObj.a || '';
+
+            let assignedKey = '';
+            if (action === 'back') {
+              assignedKey = 'B';
+            } else if (action === 'home') {
+              assignedKey = 'H';
+            } else if (action === 'cancel' || action === 'cancel_order') {
+              assignedKey = 'C';
+            } else {
+              assignedKey = optionCounter.toString();
+              optionCounter++;
+            }
+
+            body += `【${assignedKey}】 *${row.title}*`;
             if (row.description) {
               body += `\n   _${row.description}_`;
             }
             body += '\n';
 
-            optionsMap.push({
-              key: optionCounter.toString(),
-              payload: payloadObj,
-            });
-            optionsMap.push({
-              key: row.title.toLowerCase().trim(),
-              payload: payloadObj,
-            });
-            optionCounter++;
+            optionsMap.push({ key: assignedKey.toLowerCase(), payload: payloadObj });
+            optionsMap.push({ key: row.title.toLowerCase().trim(), payload: payloadObj });
           } catch (e) {
             // Fallback
           }
@@ -83,24 +98,28 @@ export class ReplyBuilder {
     }
 
     // Back Navigation Card Option
-    if (screen.previousScreenId) {
+    if (screen.previousScreenId && !optionsMap.some((o) => o.key === 'b')) {
       const backPayload = { a: 'back' };
       body += `\n【B】 ⬅️ *Back*\n`;
-      optionsMap.push({
-        key: 'b',
-        payload: backPayload,
-      });
-      optionsMap.push({
-        key: 'back',
-        payload: backPayload,
-      });
+      optionsMap.push({ key: 'b', payload: backPayload });
+      optionsMap.push({ key: 'back', payload: backPayload });
     }
 
     if (!screen.inputPrompt) {
-      body += `━━━━━━━━━━━━━━\n👇 *Reply with the number shown next to your choice.*`;
+      body += `━━━━━━━━━━━━━━\n👇 *Reply with the number or letter shown next to your choice.*`;
     } else {
       body += `━━━━━━━━━━━━━━`;
     }
+
+    logger.info(
+      {
+        screenId: screen.id,
+        optionsCount: optionsMap.length,
+        optionsMap,
+        textSnippet: body.slice(0, 100),
+      },
+      '🎨 [Lifecycle 2/4] Screen object rendered into WhatsApp text'
+    );
 
     return {
       text: body,

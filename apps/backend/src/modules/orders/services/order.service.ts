@@ -133,7 +133,9 @@ export class OrderService {
     restaurantId: string,
     customerPhone: string,
     cart: Cart,
-    idempotencyKey: string
+    idempotencyKey: string,
+    orderType: 'takeaway' | 'dining' = 'takeaway',
+    tableNumber?: number | null
   ): Promise<{ order: Order; payment: any; paymentContext?: any }> {
     // 1. Active Idempotency Check — return existing order ONLY if it is still active (non-terminal)
     const existingActiveOrder = await this.repository.findActiveByIdempotencyKey(idempotencyKey);
@@ -189,6 +191,8 @@ export class OrderService {
       totalAmount: billing.totalAmount,
       idempotencyKey: effectiveIdempotencyKey,
       customerId: customer.id,
+      orderType,
+      tableNumber: tableNumber ? Math.round(Number(tableNumber)) : null,
     };
 
     // 5. Persist Order in database (including immutable snapshot items)

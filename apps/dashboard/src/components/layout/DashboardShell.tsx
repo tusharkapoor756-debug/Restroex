@@ -7,6 +7,7 @@ import { getRestaurantSession, clearSession } from "../../lib/auth";
 import { WhatsAppService } from "../../lib/services/whatsapp.service";
 import { useTheme } from "../../hooks/useTheme";
 import { useToast } from "../ui/ToastContainer";
+import GlobalOperationsBanner from "./GlobalOperationsBanner";
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -46,14 +47,33 @@ export default function DashboardShell({ children }: DashboardShellProps) {
   const [restaurantName, setRestaurantName] = useState("Restroex Outlet");
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
 
-  // Persistent WhatsApp Connection Status Indicator State
+  const [mounted, setMounted] = useState(false);
   const [wsStatus, setWsStatus] = useState<"connected" | "connecting" | "disconnected">("connecting");
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
-  // Load session & check persistent WhatsApp status
+  // Load session, restaurant settings & check persistent WhatsApp status
   useEffect(() => {
+    setMounted(true);
     const session = getRestaurantSession();
     if (session?.name) setRestaurantName(session.name);
     if (session?.restaurantId) setRestaurantId(session.restaurantId);
+
+    // Initial load of Store Status from backend database
+    const loadStoreStatus = async () => {
+      console.log("🔍 [DashboardShell] Fetching store settings via SettingsService.getSettings()...");
+      try {
+        const { SettingsService } = await import("../../lib/services/settings.service");
+        const fullSettings = await SettingsService.getSettings();
+        console.log("✅ [DashboardShell] Received fullSettings from backend:", fullSettings);
+        if (fullSettings?.settings?.isOpen === false) {
+          setRestaurantStatus("closed");
+        } else {
+          setRestaurantStatus("open");
+        }
+      } catch (err) {
+        console.error("❌ [DashboardShell] Failed to load store status:", err);
+      }
+    };
 
     const checkWhatsAppHealth = async () => {
       if (!session?.restaurantId) return;
@@ -71,10 +91,38 @@ export default function DashboardShell({ children }: DashboardShellProps) {
       }
     };
 
+    loadStoreStatus();
     checkWhatsAppHealth();
     const interval = setInterval(checkWhatsAppHealth, 10000); // 10s health check pulse
     return () => clearInterval(interval);
   }, []);
+
+  // Instant-save onChange handler for Store Status selector
+  const handleStatusChange = async (newStatus: "open" | "busy" | "closed") => {
+    console.log(`⚡ [DashboardShell] handleStatusChange triggered! Target status: ${newStatus}`);
+    const previousStatus = restaurantStatus;
+    setRestaurantStatus(newStatus);
+    setIsUpdatingStatus(true);
+
+    try {
+      const { SettingsService } = await import("../../lib/services/settings.service");
+      // Map 'closed' to isOpen = false, 'open' or 'busy' to isOpen = true
+      const isOpenValue = newStatus !== "closed";
+      console.log(`🚀 [DashboardShell] Firing SettingsService.updateSettings({ isOpen: ${isOpenValue} })...`);
+      const updateResult = await SettingsService.updateSettings({ isOpen: isOpenValue });
+      console.log("✅ [DashboardShell] Backend updateSettings success response:", updateResult);
+      
+      const statusLabel = newStatus === "open" ? "🟢 Open" : newStatus === "busy" ? "🟡 Busy" : "🔴 Closed";
+      toast.success("Store Status Saved", `Store is now ${statusLabel}. Changes applied immediately.`);
+      window.dispatchEvent(new Event("store-status-changed"));
+    } catch (err: any) {
+      console.error("❌ [DashboardShell] updateSettings failed:", err);
+      setRestaurantStatus(previousStatus);
+      toast.error("Status Update Failed", err.message || "Failed to save store status.");
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
 
   const navItems = [
     { label: "Overview Hub", href: "/dashboard", icon: LayoutDashboard },
@@ -131,8 +179,9 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               </div>
               <select
                 value={restaurantStatus}
-                onChange={(e) => setRestaurantStatus(e.target.value as any)}
-                className="bg-transparent font-bold cursor-pointer text-slate-900 dark:text-slate-100 focus:outline-none appearance-none pr-3"
+                disabled={isUpdatingStatus}
+                onChange={(e) => handleStatusChange(e.target.value as any)}
+                className="bg-transparent font-bold cursor-pointer text-slate-900 dark:text-slate-100 focus:outline-none appearance-none pr-3 disabled:opacity-50"
               >
                 <option value="open" className="bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400">🟢 Open</option>
                 <option value="busy" className="bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400">🟡 Busy</option>
@@ -312,7 +361,8 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         </header>
 
         {/* Dynamic Page Content */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-8">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6">
+          <GlobalOperationsBanner />
           {children}
         </main>
       </div>

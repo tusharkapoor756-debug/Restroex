@@ -89,8 +89,11 @@ export interface Order {
   createdAt: string;
   updatedAt: string;
   items?: OrderItemSnapshot[];
+  orderType?: 'takeaway' | 'dining' | string;
+  tableNumber?: number | null;
   customerId?: string | null;
   customerName?: string | null;
+  customerAddress?: string | null;
   payment?: Payment;
 }
 
@@ -307,6 +310,7 @@ export interface RestaurantSettingsConfig {
   manualUpiEnabled: boolean;
   onlinePaymentsEnabled: boolean;
   // Store Settings
+  isOpen?: boolean;
   pickupAvailable: boolean;
   prepTime: number;
   pickupInstructions?: string;
@@ -321,6 +325,11 @@ export interface RestaurantSettingsConfig {
   invoiceNotes?: string;
   termsAndConditions?: string;
   autoAcceptPaidOrders: boolean;
+
+  // V1 Operations Engine Settings
+  supportedOrderModes?: string[];
+  maxActiveOrders?: number;
+  totalTables?: number;
 
   createdAt: string;
   updatedAt: string;
@@ -358,6 +367,7 @@ export interface UpdateSettingsPayload {
   manualUpiEnabled?: boolean;
   onlinePaymentsEnabled?: boolean;
   // Store Settings
+  isOpen?: boolean;
   pickupAvailable?: boolean;
   prepTime?: number;
   pickupInstructions?: string;
@@ -372,6 +382,50 @@ export interface UpdateSettingsPayload {
   invoiceNotes?: string;
   termsAndConditions?: string;
   autoAcceptPaidOrders?: boolean;
+
+  // V1 Operations Engine Settings
+  supportedOrderModes?: string[];
+  maxActiveOrders?: number;
+  totalTables?: number;
+}
+
+/** Payload DTO for PUT /api/v1/restaurants/settings */
+export interface UpdateSettingsDto {
+  // Tax & Billing
+  gstEnabled?: boolean;
+  gstNumber?: string;
+  gstPercentage?: number;
+  fssaiNumber?: string;
+
+  // Payment Settings
+  paymentMethods?: string[];
+  upiMerchantName?: string;
+  upiId?: string;
+  upiQrImageUrl?: string;
+  codEnabled?: boolean;
+  manualUpiEnabled?: boolean;
+  onlinePaymentsEnabled?: boolean;
+
+  // Store Settings
+  pickupAvailable?: boolean;
+  prepTime?: number;
+  pickupInstructions?: string;
+
+  // New Settings Fields
+  invoicePrefix?: string;
+  receiptFooter?: string;
+  supportPhone?: string;
+  supportEmail?: string;
+  website?: string;
+  instagram?: string;
+  invoiceNotes?: string;
+  termsAndConditions?: string;
+  autoAcceptPaidOrders?: boolean;
+
+  // V1 Operations Engine Settings
+  supportedOrderModes?: string[];
+  maxActiveOrders?: number;
+  totalTables?: number;
 }
 
 /** @deprecated Use FullSettings instead */

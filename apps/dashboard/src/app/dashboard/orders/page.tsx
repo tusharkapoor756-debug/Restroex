@@ -46,6 +46,7 @@ interface KanbanOrder {
   backendId: string;
   customerPhone?: string;
   customerName?: string;
+  customerAddress?: string;
   items: OrderItem[];
   totalAmount: number;
   status: WorkflowOrderStatus | "checkout_pending" | "paid" | "payment_pending";
@@ -53,6 +54,8 @@ interface KanbanOrder {
   createdAtTimestamp: number;
   minutesAgo: number;
   payment?: Payment;
+  orderType?: string;
+  tableNumber?: number | null;
 }
 
 const KANBAN_COLUMNS: { id: string; label: string; statuses: string[]; color: "info" | "warning" | "brand" | "success" }[] = [
@@ -153,7 +156,8 @@ export default function KanbanLiveOrdersPage() {
           id: o.humanReadableId || o.id.substring(0, 8),
           backendId: o.id,
           customerPhone: o.customerPhone,
-          customerName: o.customerName,
+          customerName: o.customerName || undefined,
+          customerAddress: o.customerAddress || undefined,
           items: o.items?.map((i) => ({ name: i.itemNameSnapshot, quantity: i.quantity, price: i.unitPrice })) || [],
           totalAmount: o.totalAmount,
           status: o.status as any,
@@ -161,6 +165,8 @@ export default function KanbanLiveOrdersPage() {
           createdAtTimestamp: createdMs,
           minutesAgo,
           payment: o.payment,
+          orderType: o.orderType || "takeaway",
+          tableNumber: o.tableNumber,
         };
       });
 
@@ -257,6 +263,15 @@ export default function KanbanLiveOrdersPage() {
               <span className="font-heading font-extrabold text-sm text-slate-900 dark:text-slate-100">
                 #{order.id}
               </span>
+              {order.orderType === "dining" ? (
+                <Badge variant="brand" size="sm">
+                  🍽️ DINING - Table {order.tableNumber || "?"}
+                </Badge>
+              ) : (
+                <Badge variant="neutral" size="sm">
+                  🥡 TAKEAWAY
+                </Badge>
+              )}
               <span className="text-xs text-slate-400">•</span>
               <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                 {order.customerPhone || "WhatsApp Customer"}
@@ -465,15 +480,52 @@ export default function KanbanLiveOrdersPage() {
       >
         {selectedOrder && (
           <div className="space-y-6 text-sm">
-            {/* Status & Customer Bar */}
-            <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80">
+            {/* Order Mode & Status Bar */}
+            <div className="flex items-center justify-between p-4 rounded-2xl bg-brand-50/50 dark:bg-brand-950/30 border border-brand-200/80 dark:border-brand-800/80">
               <div>
-                <span className="text-xs text-slate-500 dark:text-slate-400 block">Customer WhatsApp</span>
-                <span className="font-bold text-slate-900 dark:text-slate-100">{selectedOrder.customerPhone || "N/A"}</span>
+                <span className="text-xs text-brand-600 dark:text-brand-400 font-semibold block uppercase tracking-wider">
+                  Order Type & Location
+                </span>
+                <span className="font-heading font-extrabold text-base text-slate-900 dark:text-slate-100 flex items-center gap-1.5 mt-0.5">
+                  {selectedOrder.orderType === "dining" ? (
+                    <>🍽️ DINING — Table #{selectedOrder.tableNumber || "N/A"}</>
+                  ) : (
+                    <>🥡 TAKEAWAY / PACK</>
+                  )}
+                </span>
               </div>
-              <Badge variant="brand" size="lg" className="uppercase">
+              <Badge variant="brand" size="lg" className="uppercase font-bold">
                 {selectedOrder.status}
               </Badge>
+            </div>
+
+            {/* Customer Details Box */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-2">
+              <h4 className="font-heading font-bold text-xs uppercase text-slate-500 tracking-wider">
+                Customer Information
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span className="text-slate-400 block">Name</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    {selectedOrder.customerName || "WhatsApp Customer"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Phone</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    {selectedOrder.customerPhone || "N/A"}
+                  </span>
+                </div>
+                {selectedOrder.customerAddress && (
+                  <div className="col-span-2">
+                    <span className="text-slate-400 block">Delivery Address</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      {selectedOrder.customerAddress}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Item Breakdown */}

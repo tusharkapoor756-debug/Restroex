@@ -51,6 +51,12 @@ export default function ProductionSettingsPage() {
   const [upiId, setUpiId] = useState("restroex@upi");
   const [upiQrImage, setUpiQrImage] = useState("");
 
+  // V1 Operations Engine Settings State
+  const [takeawayEnabled, setTakeawayEnabled] = useState(true);
+  const [diningEnabled, setDiningEnabled] = useState(true);
+  const [maxActiveOrders, setMaxActiveOrders] = useState(20);
+  const [totalTables, setTotalTables] = useState(25);
+
   // Payment Method Toggles
   const [codEnabled, setCodEnabled] = useState(false);
   const [manualUpiEnabled, setManualUpiEnabled] = useState(true);
@@ -116,6 +122,12 @@ export default function ProductionSettingsPage() {
           setCodEnabled(data.settings.codEnabled ?? false);
           setManualUpiEnabled(data.settings.manualUpiEnabled ?? true);
           setOnlinePaymentsEnabled(data.settings.onlinePaymentsEnabled ?? false);
+          if (Array.isArray(data.settings.supportedOrderModes)) {
+            setTakeawayEnabled(data.settings.supportedOrderModes.includes('takeaway'));
+            setDiningEnabled(data.settings.supportedOrderModes.includes('dining'));
+          }
+          if (data.settings.maxActiveOrders !== undefined) setMaxActiveOrders(data.settings.maxActiveOrders);
+          if (data.settings.totalTables !== undefined) setTotalTables(data.settings.totalTables);
         }
       })
       .catch((err) => console.error("Failed to load settings:", err));
@@ -123,8 +135,27 @@ export default function ProductionSettingsPage() {
 
   const handleSaveSettings = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    
+    // REVISION 2 VALIDATION: At least one order mode must remain enabled!
+    if (!takeawayEnabled && !diningEnabled) {
+      toast.error("Validation Error", "At least one order mode (Takeaway or Dining) must remain enabled.");
+      return;
+    }
+    if (maxActiveOrders < 1) {
+      toast.error("Validation Error", "Maximum active orders capacity must be at least 1.");
+      return;
+    }
+    if (totalTables < 1) {
+      toast.error("Validation Error", "Total tables count must be at least 1.");
+      return;
+    }
+
     setIsSaving(true);
     try {
+      const modes: string[] = [];
+      if (takeawayEnabled) modes.push('takeaway');
+      if (diningEnabled) modes.push('dining');
+
       await SettingsService.updateSettings({
         name: restaurantName,
         ownerName,
@@ -135,6 +166,9 @@ export default function ProductionSettingsPage() {
         codEnabled,
         manualUpiEnabled,
         onlinePaymentsEnabled,
+        supportedOrderModes: modes,
+        maxActiveOrders,
+        totalTables,
       });
 
       if (restaurantId && selectedProviderId) {
@@ -259,6 +293,63 @@ export default function ProductionSettingsPage() {
             <Input label="Owner / Manager Name" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} />
             <Input label="WhatsApp Support Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
             <Input label="Store Address" value={address} onChange={(e) => setAddress(e.target.value)} />
+          </div>
+
+          {/* V1 OPERATIONS ENGINE SETTINGS SECTION */}
+          <div className="border-t border-slate-100 dark:border-slate-800 pt-6 space-y-4">
+            <div>
+              <h4 className="font-heading font-bold text-sm text-slate-900 dark:text-slate-100">Restaurant Operations & Order Modes</h4>
+              <p className="text-xs text-slate-500">Configure enabled ordering modes, kitchen capacity, and table count</p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 bg-slate-50/50 dark:bg-slate-950/50">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block">Supported Order Modes</span>
+                <div className="flex flex-col gap-2 pt-1 text-xs">
+                  <label className="flex items-center gap-2 cursor-pointer font-medium text-slate-800 dark:text-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={takeawayEnabled}
+                      onChange={(e) => setTakeawayEnabled(e.target.checked)}
+                      className="rounded text-brand-600 focus:ring-brand-500 h-4 w-4"
+                    />
+                    <span>🥡 Takeaway (Pickup)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer font-medium text-slate-800 dark:text-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={diningEnabled}
+                      onChange={(e) => setDiningEnabled(e.target.checked)}
+                      className="rounded text-brand-600 focus:ring-brand-500 h-4 w-4"
+                    />
+                    <span>🍽️ Dining (Eat at restaurant)</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3 bg-slate-50/50 dark:bg-slate-950/50">
+                <div>
+                  <Input
+                    label="Max Active Orders Capacity (Kitchen Limit)"
+                    type="number"
+                    min={1}
+                    value={maxActiveOrders}
+                    onChange={(e) => setMaxActiveOrders(parseInt(e.target.value, 10) || 1)}
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">Only counts orders in received, accepted, or preparing status</p>
+                </div>
+                <div>
+                  <Input
+                    label="Total Dining Tables"
+                    type="number"
+                    min={1}
+                    value={totalTables}
+                    onChange={(e) => setTotalTables(parseInt(e.target.value, 10) || 1)}
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">Valid table numbers allowed during WhatsApp checkout</p>
+                </div>
+              </div>
+            </div>
           </div>
         </Card>
       )}

@@ -63,8 +63,11 @@ export interface Order {
   createdAt: string;
   updatedAt: string;
   items?: OrderItemSnapshot[];
+  orderType?: 'takeaway' | 'dining' | string;
+  tableNumber?: number | null;
   customerId?: string | null;
   customerName?: string | null;
+  customerAddress?: string | null;
   payment?: any;
 }
 
