@@ -63,6 +63,8 @@ export class RazorpayProvider extends BaseProvider {
             email: false,
           },
           reminder_enable: false,
+          callback_url: params.callbackUrl,
+          callback_method: 'get',
           notes: {
             orderId: params.orderId,
             restaurantId: params.restaurantId,

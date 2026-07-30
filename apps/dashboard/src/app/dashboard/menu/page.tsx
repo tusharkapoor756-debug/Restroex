@@ -68,7 +68,10 @@ export default function ProductionMenuCatalogPage() {
     description: "",
     vegType: "veg" as "veg" | "non-veg",
     isPopular: false,
-    variants: [{ variantName: "Full", price: 0 }],
+    allowInstructions: true,
+    // Always start empty — variants are optional. If the user doesn't add any,
+    // we send [] to the backend so stale variants are cleared.
+    variants: [] as { variantName: string; price: number }[],
   });
 
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -180,6 +183,12 @@ export default function ProductionMenuCatalogPage() {
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      // Only send variants that have a non-empty name.
+      // Sending [] explicitly tells the backend to clear any stale variants.
+      const cleanVariants = formData.variants
+        .filter((v) => v.variantName.trim() !== "")
+        .map((v, i) => ({ variantName: v.variantName.trim(), price: Number(v.price), displayOrder: i }));
+
       if (isNewItem) {
         const created = await MenuService.createItem({
           name: formData.name,
@@ -188,7 +197,8 @@ export default function ProductionMenuCatalogPage() {
           description: formData.description,
           vegType: formData.vegType,
           isPopular: formData.isPopular,
-          variants: formData.variants.map((v, i) => ({ variantName: v.variantName, price: Number(v.price), displayOrder: i })),
+          allowInstructions: formData.allowInstructions,
+          variants: cleanVariants,
         });
         setItems((prev) => [...prev, created]);
         toast.success("Item Created", `"${created.name}" added to catalog.`);
@@ -200,7 +210,8 @@ export default function ProductionMenuCatalogPage() {
           description: formData.description,
           vegType: formData.vegType,
           isPopular: formData.isPopular,
-          variants: formData.variants.map((v, i) => ({ variantName: v.variantName, price: Number(v.price), displayOrder: i })),
+          allowInstructions: formData.allowInstructions,
+          variants: cleanVariants,
         });
         setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
         toast.success("Item Saved", `Updated details for "${updated.name}".`);
@@ -282,12 +293,14 @@ export default function ProductionMenuCatalogPage() {
               setEditingItem(null);
               setFormData({
                 name: "",
-                basePrice: 150,
+                basePrice: 0,
                 categoryId: categories[0]?.id || "",
                 description: "",
                 vegType: "veg",
                 isPopular: false,
-                variants: [{ variantName: "Half", price: 100 }, { variantName: "Full", price: 180 }],
+                allowInstructions: true,
+                // Start with no variants — user adds them only if this item has size options
+                variants: [],
               });
               setIsModalOpen(true);
             }}
@@ -435,12 +448,33 @@ export default function ProductionMenuCatalogPage() {
                 </button>
               </div>
 
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-xs font-semibold">
-                <span className="text-slate-500 dark:text-slate-400">Base Price:</span>
-                <span className="font-heading font-extrabold text-sm text-slate-900 dark:text-slate-100">
-                  ₹{item.basePrice}
-                </span>
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 text-xs font-semibold">
+                {item.variants && item.variants.length > 0 ? (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 dark:text-slate-400">Variants:</span>
+                      <span className="font-heading font-extrabold text-sm text-slate-900 dark:text-slate-100">
+                        {item.variants.length} size{item.variants.length > 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {item.variants.map((v: any) => (
+                        <span key={v.id || v.variantName} className="px-1.5 py-0.5 rounded-md bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 text-[10px] font-bold">
+                          {v.variantName} ₹{v.price}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 dark:text-slate-400">Base Price:</span>
+                    <span className="font-heading font-extrabold text-sm text-slate-900 dark:text-slate-100">
+                      ₹{item.basePrice}
+                    </span>
+                  </div>
+                )}
               </div>
+
 
               <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
                 <Badge variant={item.isAvailable ? "success" : "neutral"} size="sm">
@@ -461,6 +495,7 @@ export default function ProductionMenuCatalogPage() {
                         description: item.description || "",
                         vegType: item.vegType as any,
                         isPopular: item.isPopular,
+                        allowInstructions: item.allowInstructions ?? true,
                         variants: item.variants?.map((v) => ({ variantName: v.variantName, price: v.price })) || [],
                       });
                       setIsModalOpen(true);
@@ -538,6 +573,7 @@ export default function ProductionMenuCatalogPage() {
         }
       >
         <form onSubmit={handleSaveItem} className="space-y-4 text-xs">
+          {/* Item Name */}
           <Input
             label="Item Name"
             placeholder="e.g. Butter Chicken Special"
@@ -546,13 +582,14 @@ export default function ProductionMenuCatalogPage() {
             required
           />
 
+          {/* Base Price + Category */}
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Base Price (₹)"
+              label={formData.variants.length > 0 ? "Base Price (₹) — optional if variants set" : "Base Price (₹)"}
               type="number"
+              min={0}
               value={formData.basePrice}
               onChange={(e) => setFormData({ ...formData, basePrice: Number(e.target.value) })}
-              required
             />
             <Select
               label="Category"
@@ -562,14 +599,133 @@ export default function ProductionMenuCatalogPage() {
             />
           </div>
 
+          {/* Veg / Non-Veg + Options */}
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex-1 min-w-[140px]">
+              <Select
+                label="Type"
+                value={formData.vegType}
+                onChange={(e) => setFormData({ ...formData, vegType: e.target.value as any })}
+                options={[
+                  { value: "veg", label: "🟢 Vegetarian" },
+                  { value: "non-veg", label: "🔴 Non-Vegetarian" },
+                ]}
+              />
+            </div>
+            <div className="flex items-center gap-4 mt-5">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={formData.isPopular}
+                  onChange={(e) => setFormData({ ...formData, isPopular: e.target.checked })}
+                  className="rounded text-brand-600 focus:ring-brand-500 h-4 w-4"
+                />
+                <span className="font-semibold text-slate-700 dark:text-slate-300">⭐ Bestseller</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={formData.allowInstructions}
+                  onChange={(e) => setFormData({ ...formData, allowInstructions: e.target.checked })}
+                  className="rounded text-brand-600 focus:ring-brand-500 h-4 w-4"
+                />
+                <span className="font-semibold text-slate-700 dark:text-slate-300">📝 Custom Instructions</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Description */}
           <div className="space-y-1.5">
             <label className="font-semibold text-slate-700 dark:text-slate-300">Description</label>
             <textarea
               rows={2}
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Short description shown to customers..."
               className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
+          </div>
+
+          {/* ── Variants Section ─────────────────────────────── */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="font-bold text-slate-800 dark:text-slate-200 block">Size / Variant Options</span>
+                <span className="text-slate-500 text-[11px]">
+                  {formData.variants.length === 0
+                    ? "No variants — item sold at Base Price above."
+                    : `${formData.variants.length} variant(s) defined. Base price is overridden by variant prices.`}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setFormData({
+                    ...formData,
+                    variants: [...formData.variants, { variantName: "", price: 0 }],
+                  })
+                }
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-brand-600 text-white text-[11px] font-bold hover:bg-brand-700 transition cursor-pointer"
+              >
+                <Plus className="h-3 w-3" />
+                Add Variant
+              </button>
+            </div>
+
+            {formData.variants.length > 0 && (
+              <div className="space-y-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+                {/* Header row */}
+                <div className="grid grid-cols-[1fr_100px_32px] gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">
+                  <span>Variant Name (e.g. Small, Regular, Large)</span>
+                  <span>Price (₹)</span>
+                  <span />
+                </div>
+
+                {formData.variants.map((variant, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_100px_32px] gap-2 items-center">
+                    <input
+                      type="text"
+                      placeholder={`e.g. ${idx === 0 ? "Regular" : idx === 1 ? "Large" : "XL"}`}
+                      value={variant.variantName}
+                      onChange={(e) => {
+                        const updated = [...formData.variants];
+                        updated[idx] = { ...updated[idx], variantName: e.target.value };
+                        setFormData({ ...formData, variants: updated });
+                      }}
+                      className="px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="0"
+                      value={variant.price}
+                      onChange={(e) => {
+                        const updated = [...formData.variants];
+                        updated[idx] = { ...updated[idx], price: Number(e.target.value) };
+                        setFormData({ ...formData, variants: updated });
+                      }}
+                      className="px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = formData.variants.filter((_, i) => i !== idx);
+                        setFormData({ ...formData, variants: updated });
+                      }}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 transition cursor-pointer"
+                      title="Remove this variant"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+
+                <p className="text-[10px] text-slate-400 pt-1">
+                  💡 Tip: Remove all variants to sell this item at a single Base Price.
+                </p>
+              </div>
+            )}
           </div>
         </form>
       </Modal>

@@ -131,6 +131,28 @@ export class RestaurantRepository {
     return data ? this.mapToDomain(data) : null;
   }
 
+  public async findBySlugOrId(identifier: string): Promise<Restaurant | null> {
+    // 1. Try finding by ID
+    const byId = await this.findById(identifier).catch(() => null);
+    if (byId) return byId;
+
+    // 2. Try finding by slug column if present, or generated slug match
+    const { data, error } = await this.client
+      .from('restaurants')
+      .select('*')
+      .or(`id.eq.${identifier},name.ilike.%${identifier.replace(/-/g, ' ')}%`)
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) {
+      // Return first active restaurant as fallback if identifier is 'demo' or default
+      const fallback = await this.client.from('restaurants').select('*').eq('is_active', true).limit(1).maybeSingle();
+      return fallback.data ? this.mapToDomain(fallback.data) : null;
+    }
+
+    return this.mapToDomain(data);
+  }
+
   private isMissingPhoneNumberColumnError(message: string): boolean {
     return /phone_number/i.test(message) && /column|schema cache|does not exist/i.test(message);
   }

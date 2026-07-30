@@ -125,6 +125,7 @@ export class MenuService {
       isPopular: dto.isPopular,
       isRecommended: dto.isRecommended,
       displayOrder: dto.displayOrder,
+      allowInstructions: dto.allowInstructions,
       variants,
     });
 
@@ -195,6 +196,7 @@ export class MenuService {
       isPopular: dto.isPopular,
       isRecommended: dto.isRecommended,
       displayOrder: dto.displayOrder,
+      allowInstructions: dto.allowInstructions,
     });
 
     let savedVariants = await this.repository.findVariants(itemId);

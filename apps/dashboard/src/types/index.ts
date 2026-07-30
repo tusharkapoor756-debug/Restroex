@@ -151,6 +151,7 @@ export interface MenuItem {
   isPopular: boolean;
   isRecommended: boolean;
   displayOrder: number;
+  allowInstructions?: boolean;
   variants: MenuItemVariant[];
   customizations?: MenuCustomization[];
   createdAt: string;
@@ -177,6 +178,7 @@ export interface CreateMenuItemDto {
   isPopular?: boolean;
   isRecommended?: boolean;
   displayOrder?: number;
+  allowInstructions?: boolean;
 }
 
 export interface UpdateMenuItemDto {
@@ -193,6 +195,7 @@ export interface UpdateMenuItemDto {
   isPopular?: boolean;
   isRecommended?: boolean;
   displayOrder?: number;
+  allowInstructions?: boolean;
 }
 
 export interface CreateCategoryDto {

@@ -18,6 +18,7 @@ export interface MenuItem {
   isPopular: boolean;
   isRecommended: boolean;
   displayOrder: number;
+  allowInstructions?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -126,6 +127,7 @@ export class MenuRepository {
       isPopular?: boolean;
       isRecommended?: boolean;
       displayOrder?: number;
+      allowInstructions?: boolean;
     },
   ): Promise<MenuItem> {
     const { data, error } = await this.client
@@ -145,6 +147,7 @@ export class MenuRepository {
         is_popular: input.isPopular ?? false,
         is_recommended: input.isRecommended ?? false,
         display_order: input.displayOrder ?? 0,
+        allow_instructions: input.allowInstructions ?? true,
       })
       .select('*')
       .single();
@@ -173,6 +176,7 @@ export class MenuRepository {
       isPopular?: boolean;
       isRecommended?: boolean;
       displayOrder?: number;
+      allowInstructions?: boolean;
       variants: (VariantInputDto & { displayOrder?: number })[];
     },
   ): Promise<MenuItemWithVariants> {
@@ -194,6 +198,7 @@ export class MenuRepository {
         is_popular: input.isPopular ?? false,
         is_recommended: input.isRecommended ?? false,
         display_order: input.displayOrder ?? 0,
+        allow_instructions: input.allowInstructions ?? true,
       })
       .select('*')
       .single();
@@ -228,6 +233,7 @@ export class MenuRepository {
       isPopular?: boolean;
       isRecommended?: boolean;
       displayOrder?: number;
+      allowInstructions?: boolean;
     },
   ): Promise<MenuItem> {
     const updatePayload: Record<string, any> = {
@@ -246,6 +252,10 @@ export class MenuRepository {
     if (input.isPopular !== undefined) updatePayload['is_popular'] = input.isPopular;
     if (input.isRecommended !== undefined) updatePayload['is_recommended'] = input.isRecommended;
     if (input.displayOrder !== undefined) updatePayload['display_order'] = input.displayOrder;
+    if (input.allowInstructions !== undefined) {
+      // Safe assignment: column added in migration 00023
+      updatePayload['allow_instructions'] = input.allowInstructions;
+    }
 
     const { data, error } = await this.client
       .from('menu_items')
@@ -421,6 +431,7 @@ export class MenuRepository {
       isPopular: row.is_popular || false,
       isRecommended: row.is_recommended || false,
       displayOrder: row.display_order ?? 0,
+      allowInstructions: row.allow_instructions ?? true,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

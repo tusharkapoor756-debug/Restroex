@@ -108,13 +108,14 @@ export class WhatsAppWebJsProvider implements WhatsAppProvider {
     }
 
     session.lastSendAt = Date.now();
+    const targetChatId = await this.resolveChatId(session, payload.to);
 
     if (payload.mediaUrl) {
       const { MessageMedia } = await this.loadWebJs();
       const media = await MessageMedia.fromUrl(payload.mediaUrl, { unsafeMime: true });
-      await session.client.sendMessage(this.normalizeChatId(payload.to), media, { caption: payload.body });
+      await session.client.sendMessage(targetChatId, media, { caption: payload.body });
     } else {
-      await session.client.sendMessage(this.normalizeChatId(payload.to), payload.body);
+      await session.client.sendMessage(targetChatId, payload.body);
     }
   }
 
@@ -897,10 +898,40 @@ export class WhatsAppWebJsProvider implements WhatsAppProvider {
 
   private normalizeChatId(phoneOrChatId: string): string {
     if (phoneOrChatId.includes('@')) return phoneOrChatId;
-    return `${phoneOrChatId.replace(/[^\d]/g, '')}@c.us`;
+    let digits = phoneOrChatId.replace(/[^\d]/g, '');
+    if (digits.length === 10) digits = `91${digits}`;
+    return `${digits}@c.us`;
+  }
+
+  private async resolveChatId(session: RuntimeSession, phoneOrChatId: string): Promise<string> {
+    if (!phoneOrChatId) return phoneOrChatId;
+    const trimmed = String(phoneOrChatId).trim();
+    if (trimmed.includes('@')) return trimmed; // Already full JID or LID
+
+    let digits = trimmed.replace(/[^\d]/g, '');
+    if (digits.length === 10) {
+      digits = `91${digits}`;
+    }
+
+    try {
+      if (session?.client?.getNumberId) {
+        const numberId = await session.client.getNumberId(digits);
+        if (numberId?._serialized) {
+          logger.info({ digits, resolvedJid: numberId._serialized }, 'Successfully resolved WhatsApp number JID/LID');
+          return numberId._serialized;
+        }
+      }
+    } catch (err) {
+      logger.warn({ err, digits }, 'getNumberId resolution fallback triggered');
+    }
+
+    return `${digits}@c.us`;
   }
 
   private denormalizeChatId(chatId: string): string {
+    if (chatId.includes('@lid')) {
+      return chatId; // Preserve full @lid identifier if user is on WhatsApp LID privacy mode
+    }
     return chatId.replace('@c.us', '').replace('@s.whatsapp.net', '');
   }
 

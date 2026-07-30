@@ -14,6 +14,12 @@ export class OrderService {
     this.repository = new OrderRepository();
   }
 
+  public async getOrderById(id: string): Promise<Order> {
+    const order = await this.repository.findById(id);
+    if (!order) throw new Error(`Order ${id} not found`);
+    return order;
+  }
+
   /**
    * Validates a cart against the latest database menu items, availability, and prices.
    * Generates final immutable item snapshots for invoice generation.
@@ -244,8 +250,32 @@ export class OrderService {
       throw new Error(`Forbidden transition from "${order.status}" to "${targetStatus}"`);
     }
 
-    const updated = await this.repository.updateStatus(orderId, targetStatus);
-    logger.info({ orderId, from: order.status, to: targetStatus }, '🔄 Order state transitioned successfully.');
+    const updatedOrder = await this.repository.updateStatus(orderId, targetStatus);
+    logger.info({ orderId, oldStatus: order.status, newStatus: targetStatus }, 'Order status updated.');
+
+    // Phase 3: Emit Decoupled Domain Event
+    const eventTypeMap: Record<string, any> = {
+      accepted: 'ORDER_ACCEPTED',
+      preparing: 'ORDER_PREPARING',
+      ready: 'ORDER_READY',
+      completed: 'ORDER_COMPLETED',
+      cancelled: 'ORDER_CANCELLED',
+      rejected: 'ORDER_REJECTED',
+    };
+    const eventType = eventTypeMap[targetStatus];
+    if (eventType) {
+      const { orderEventEmitter } = require('../events/order-events.bus');
+      orderEventEmitter.emitOrderEvent(eventType, {
+        orderId: updatedOrder.id,
+        restaurantId: updatedOrder.restaurantId,
+        customerPhone: updatedOrder.customerPhone,
+        status: updatedOrder.status,
+        orderType: updatedOrder.orderType,
+        tableNumber: updatedOrder.tableNumber,
+        totalAmount: updatedOrder.totalAmount,
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     // Write to order_status_timeline tracking table (Part 8)
     try {
@@ -257,27 +287,6 @@ export class OrderService {
         });
     } catch (err) {
       logger.warn({ err, orderId }, 'Failed to write order timeline transition record');
-    }
-
-    // Trigger WhatsApp Notification updates to customer (Part 11)
-    try {
-      const { WhatsAppMessageService } = require('../../whatsapp/message.service');
-      const messages = new WhatsAppMessageService();
-      
-      const notificationsMap: Record<string, string> = {
-        accepted: `🍳 Restaurant accepted your order *${updated.humanReadableId || orderId}*. We are preparing your food shortly!`,
-        preparing: `🍳 Your food for order *${updated.humanReadableId || orderId}* is now being prepared!`,
-        ready: `🎉 Your order *${updated.humanReadableId || orderId}* is ready!`,
-        completed: `❤️ Your order *${updated.humanReadableId || orderId}* has been delivered. Thank you!`,
-        cancelled: `❌ Your order *${updated.humanReadableId || orderId}* has been cancelled.`,
-      };
-
-      const msgText = notificationsMap[targetStatus];
-      if (msgText) {
-        await messages.sendText(order.restaurantId, order.customerPhone, msgText);
-      }
-    } catch (err) {
-      logger.warn({ err, orderId }, 'Failed to dispatch order update notification');
     }
 
     // Event hooks will trigger here (e.g. trigger BullMQ worker alerts)
@@ -295,6 +304,6 @@ export class OrderService {
       }
     }
 
-    return updated;
+    return updatedOrder;
   }
 }

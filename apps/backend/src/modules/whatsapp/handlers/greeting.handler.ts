@@ -2,29 +2,25 @@ export class GreetingHandler {
 
     public handle(
         restaurantName: string,
+        restaurantSlug?: string,
+        customerPhone?: string,
     ): string {
+        const dashboardBase = process.env.DASHBOARD_URL || 'http://localhost:3000';
+        // Embed customer's WhatsApp number in the URL so the ordering page
+        // pre-fills their phone and the bot knows where to send order updates.
+        const phoneParam = customerPhone ? `?phone=${encodeURIComponent(customerPhone)}` : '';
+        const orderingUrl = `${dashboardBase}/order/${restaurantSlug || 'demo'}${phoneParam}`;
 
         return [
             `🍽️ *Welcome to ${restaurantName}!*`,
             '',
-            '🙏 Namaste!',
+            'Aapka order ek click mein ready! 🚀',
             '',
-            'Aapka swagat hai. Hum aapka order lene ke liye ready hain.',
-            '',
-            'Aap neeche diye gaye options me se kuch bhi kar sakte hain:',
-            '',
-            '📋 *menu* — Complete menu dekhiye',
-            '🛒 Seedha apna order bhejiye',
-            '',
-            'Example:',
-            '• 2 Malai Chaap Full',
-            '• 1 Paneer Tikka',
-            '• 2 Coke',
-            '',
-            'Agar kisi dish ke baare me kuch poochna ho, bas message kar dijiye 😊',
+            `👇 *Yahan click karein aur apna order place karein:*`,
+            `${orderingUrl}`,
             '',
             '━━━━━━━━━━━━━━━━━━',
-            '✨ Smart Ordering by Restroex',
+            '✨ Powered by Restroex',
         ].join('\n');
 
     }

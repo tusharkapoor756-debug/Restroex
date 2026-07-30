@@ -223,6 +223,37 @@ export class WhatsAppBotReplyService {
       }
 
       // ─────────────────────────────────────────────────────────────────────
+      // LAYER 0.1 — Greeting Early Interception
+      // When session is IDLE and the customer sends a greeting, respond with
+      // the online ordering link and stop immediately. The customer is expected
+      // to order via the web platform. All post-order updates (paid, accepted,
+      // preparing, ready) continue to be sent via WhatsApp by the event bus.
+      // ─────────────────────────────────────────────────────────────────────
+      const GREETING_KEYWORDS = new Set([
+        'hi', 'hello', 'hey', 'namaste', 'namaskar', 'ram ram', 'jai shri krishna',
+        'hanji', 'haan', 'yo', 'sup', 'start', 'menu',
+        'good morning', 'good evening', 'good afternoon', 'good night',
+        'helo', 'hii', 'hiii', 'hihi', 'hlw', 'hlo',
+        'kya hal', 'kaise ho', 'order karna', 'order', 'order karo',
+      ]);
+      const normalizedText = text.toLowerCase().trim();
+      const isGreeting = GREETING_KEYWORDS.has(normalizedText) ||
+        GREETING_KEYWORDS.has(normalizedText.replace(/[!?.,]+$/, ''));
+
+      if (isGreeting && session.state === ConversationState.IDLE) {
+        logger.info({ customerPhone, text }, '👋 Greeting detected in IDLE state — sending ordering link and stopping.');
+
+        // Fetch restaurant to get the name
+        const restaurantForGreeting = await this.restaurantRepository.findById(restaurantId);
+        const restaurantName = restaurantForGreeting?.name || 'Our Restaurant';
+
+        // Pass customerPhone so it gets embedded in the URL → ordering page pre-fills it
+        const greetingMsg = this.greetingHandler.handle(restaurantName, restaurantId, customerPhone);
+        await this.messages.sendText(restaurantId, customerPhone, greetingMsg);
+        return; // Stop here — customer should order via the web link
+      }
+
+      // ─────────────────────────────────────────────────────────────────────
       // LAYER 0 — Payment screenshot handling (state-locked, must run first)
       // ─────────────────────────────────────────────────────────────────────
       if (session.state === ConversationState.AWAITING_PAYMENT_SCREENSHOT) {

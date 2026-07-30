@@ -51,8 +51,10 @@ export class PaymentOrchestratorService {
     providerName: string;
     customerName?: string;
     customerEmail?: string;
+    callbackUrl?: string;
+    sendWhatsAppLink?: boolean;
   }): Promise<{ payment: Payment; paymentUrl: string }> {
-    const { orderId, restaurantId, customerPhone, amount, currency = 'INR', providerName } = params;
+    const { orderId, restaurantId, customerPhone, amount, currency = 'INR', providerName, callbackUrl, sendWhatsAppLink = false } = params;
 
     // Resolve provider implementation & restaurant credentials
     const provider = PaymentProviderRegistry.get(providerName);
@@ -80,6 +82,7 @@ export class PaymentOrchestratorService {
       customerName: params.customerName,
       customerPhone,
       customerEmail: params.customerEmail,
+      callbackUrl,
       description: `Payment for Order #${orderId}`,
     };
 
@@ -124,10 +127,12 @@ export class PaymentOrchestratorService {
       });
     }
 
-    // Notify customer on WhatsApp with Payment Link
-    this.sendWhatsAppPaymentLink(payment, linkResponse.paymentUrl).catch((err) => {
-      logger.warn({ err, paymentId: payment.id }, 'Failed to dispatch WhatsApp payment link.');
-    });
+    // Only notify customer on WhatsApp with Payment Link if explicitly requested (e.g. chat ordering)
+    if (sendWhatsAppLink) {
+      this.sendWhatsAppPaymentLink(payment, linkResponse.paymentUrl).catch((err) => {
+        logger.warn({ err, paymentId: payment.id }, 'Failed to dispatch WhatsApp payment link.');
+      });
+    }
 
     return {
       payment,
@@ -255,13 +260,19 @@ export class PaymentOrchestratorService {
     }
 
     // 4. Send Rich Interactive Payment Confirmation Card via WhatsApp
+    // 4. Send Clean WhatsApp Payment Confirmation Message (Idempotent via Redis Lock)
     try {
-      const { ReplyBuilder } = require('../../whatsapp/interactive/reply-builder');
-      const { SessionRepository } = require('../../conversations/repositories/session.repository');
+      const { redis } = require('../../../infrastructure/redis/redis.client');
+      const dedupKey = `payment:confirmed:${payment.id}`;
+      const isFirst = await redis.getClient().set(dedupKey, 'true', 'EX', 300, 'NX');
+      if (!isFirst) {
+        logger.info({ paymentId: payment.id }, 'Duplicate payment confirmation message suppressed by Redis lock.');
+        return;
+      }
+
       const { WhatsAppMessageService } = require('../../whatsapp/message.service');
       const { OrderService } = require('../../orders/services/order.service');
 
-      const sessionRepo = new SessionRepository();
       const messages = new WhatsAppMessageService();
       const orderService = new OrderService();
       const realOrder = await orderService['repository'].findById(payment.orderId).catch(() => null);
@@ -272,39 +283,21 @@ export class PaymentOrchestratorService {
 
       const paidAmount = payment.verifiedAmount || payment.amount || realOrder?.totalAmount || 0;
 
-      const confirmationScreen = {
-        id: 'payment_confirmed',
-        title: 'Payment Confirmed',
-        body: [
-          `✅ *Your payment of ₹${paidAmount} was received!*`,
-          `━━━━━━━━━━━━━━`,
-          `Order ID : *${displayOrderId}*`,
-          ``,
-          `🍳 Please wait while restaurant is accepting your order shortly.`,
-        ].join('\n'),
-        buttons: [
-          { id: JSON.stringify({ a: 'track_order' }), title: '📦 Track Order' },
-          { id: JSON.stringify({ a: 'browse', p: 1 }), title: '🍽️ Place a New Order' },
-          { id: JSON.stringify({ a: 'talk_to_staff' }), title: '💬 Talk to Support' },
-          { id: JSON.stringify({ a: 'home' }), title: '🏠 Back to Home' },
-        ],
-      };
-
-      const { text, optionsMap } = ReplyBuilder.buildTextFallback(confirmationScreen);
-
-      // Save optionsMap to session so user numbers (1, 2, 3, 4) route cleanly
-      await sessionRepo.patchContext(payment.restaurantId, payment.customerPhone, {
-        lastInteractiveScreen: {
-          id: confirmationScreen.id,
-          options: optionsMap,
-        },
-      });
+      const messageText = [
+        `✅ *Payment Confirmed!*`,
+        `━━━━━━━━━━━━━━`,
+        `Order ID : *${displayOrderId}*`,
+        `Amount   : *₹${paidAmount}*`,
+        ``,
+        `🍳 Restaurant is preparing your order. Live updates will appear here!`,
+      ].join('\n');
 
       await messages.sendText(
         payment.restaurantId,
         payment.customerPhone,
-        text
+        messageText
       );
+      logger.info({ paymentId: payment.id, customerPhone: payment.customerPhone }, 'Payment confirmation notification sent to customer.');
     } catch (err) {
       logger.warn({ err }, 'Failed to send WhatsApp confirmation');
     }

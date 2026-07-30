@@ -6,6 +6,7 @@ import { redis } from './infrastructure/redis/redis.client';
 import { queueRegistry } from './infrastructure/queue';
 import { startWhatsAppIncomingWorker, startPaymentAnalysisWorker } from './infrastructure/queue/workers';
 import { whatsappProviderFactory } from './modules/whatsapp/providers/whatsapp-provider.factory';
+import { whatsappOrderEventListener } from './modules/whatsapp/services/whatsapp-order-event.listener';
 
 const run = async () => {
   logger.info('Initializing Restroex Runtime...');
@@ -20,6 +21,11 @@ const run = async () => {
   await queueRegistry.initialize();
   startWhatsAppIncomingWorker();
   startPaymentAnalysisWorker();
+
+  // Initialize domain event listeners
+  whatsappOrderEventListener.initialize();
+  logger.info('✅ WhatsApp Order Event Listener initialized.');
+
   await restoreWhatsAppSessions();
 
   const app = createApp();

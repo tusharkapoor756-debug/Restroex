@@ -40,6 +40,7 @@ export interface MenuItemWithVariants {
   isPopular: boolean;
   isRecommended: boolean;
   displayOrder: number;
+  allowInstructions?: boolean;
   createdAt: string;
   updatedAt: string;
   variants: MenuVariant[];
