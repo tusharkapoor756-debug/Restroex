@@ -64,13 +64,23 @@ export class PaymentRepository {
   }
 
   public async getByOrderId(orderId: string): Promise<Payment | null> {
-    const { data, error } = await this.client
+    let { data, error } = await this.client
       .from('payments')
       .select('*')
       .eq('order_id', orderId)
       .maybeSingle();
 
-    if (error || !data) return null;
+    if (!data) {
+      // Fallback search: check gateway_data->>'paymentLinkId' or provider_order_id
+      const fallback = await this.client
+        .from('payments')
+        .select('*')
+        .or(`provider_order_id.eq.${orderId},gateway_data->>paymentLinkId.eq.${orderId}`)
+        .maybeSingle();
+      data = fallback.data;
+    }
+
+    if (!data) return null;
     return this.mapToDomain(data);
   }
 

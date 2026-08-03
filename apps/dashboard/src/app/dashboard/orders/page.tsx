@@ -56,6 +56,7 @@ interface KanbanOrder {
   payment?: Payment;
   orderType?: string;
   tableNumber?: number | null;
+  notes?: string | null;
 }
 
 const KANBAN_COLUMNS: { id: string; label: string; statuses: string[]; color: "info" | "warning" | "brand" | "success" }[] = [
@@ -75,6 +76,8 @@ export default function KanbanLiveOrdersPage() {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [newOrderPulseId, setNewOrderPulseId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<string>("all");
+  const [filterQuery, setFilterQuery] = useState<string>("");
   const previousOrdersRef = useRef<string[]>([]);
   const audioContextRef = useRef<AudioContext | null>(null);
 
@@ -167,6 +170,7 @@ export default function KanbanLiveOrdersPage() {
           payment: o.payment,
           orderType: o.orderType || "takeaway",
           tableNumber: o.tableNumber,
+          notes: (o as any).notes || null,
         };
       });
 
@@ -231,19 +235,33 @@ export default function KanbanLiveOrdersPage() {
   };
 
   const renderColumnContent = (colStatuses: string[]) => {
-    const colOrders = orders.filter((o) => colStatuses.includes(o.status));
+    let colOrders = orders.filter((o) => colStatuses.includes(o.status));
+
+    if (filterQuery.trim()) {
+      const q = filterQuery.toLowerCase();
+      colOrders = colOrders.filter((o) => {
+        const idMatch = o.id.toLowerCase().includes(q);
+        const phoneMatch = o.customerPhone?.toLowerCase().includes(q);
+        const nameMatch = o.customerName?.toLowerCase().includes(q);
+        const tableMatch = o.tableNumber ? String(o.tableNumber).includes(q) : false;
+        const notesMatch = o.notes?.toLowerCase().includes(q);
+        const itemMatch = o.items.some((i) => i.name.toLowerCase().includes(q));
+        return idMatch || phoneMatch || nameMatch || tableMatch || notesMatch || itemMatch;
+      });
+    }
 
     if (colOrders.length === 0) {
       return (
         <div className="flex flex-col items-center justify-center p-6 text-center rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/40 my-2">
           <ShoppingBag className="h-6 w-6 text-slate-400 dark:text-slate-600 mb-1.5" />
-          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">No Tickets</span>
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">No Matching Tickets</span>
         </div>
       );
     }
 
     return colOrders.map((order) => {
       const isPulsing = newOrderPulseId === order.backendId;
+      const isPaid = order.status === "paid" || String(order.payment?.paymentStatus) === "verified" || String(order.payment?.paymentStatus) === "captured";
 
       return (
         <Card
@@ -253,59 +271,88 @@ export default function KanbanLiveOrdersPage() {
             setSelectedOrder(order);
             setIsSheetOpen(true);
           }}
-          className={`space-y-3 relative p-4 transition-all duration-200 ${
+          className={`space-y-3 relative p-4 transition-all duration-200 border-l-4 ${
+            isPaid ? "border-l-emerald-500" : "border-l-amber-500"
+          } ${
             isPulsing ? "ring-2 ring-brand-500 animate-pulse-glow" : ""
           }`}
         >
-          {/* Top header line */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="font-heading font-extrabold text-sm text-slate-900 dark:text-slate-100">
+          {/* Card Header: Order ID, Dining/Takeaway Tag, Timer & Payment Status */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-heading font-black text-base text-slate-900 dark:text-slate-100 tracking-tight">
                 #{order.id}
               </span>
+              <div className="flex items-center gap-1.5">
+                <span className={`px-2 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider ${
+                  isPaid 
+                    ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30" 
+                    : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+                }`}>
+                  {isPaid ? "PAID ✓" : "UNPAID"}
+                </span>
+                <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500 flex items-center gap-0.5">
+                  <Clock className="h-3 w-3" />
+                  {order.minutesAgo === 0 ? "Just now" : `${order.minutesAgo}m ago`}
+                </span>
+              </div>
+            </div>
+
+            {/* Sub-Header: Order Type & Table Pill */}
+            <div className="flex items-center gap-2">
               {order.orderType === "dining" ? (
-                <Badge variant="brand" size="sm">
-                  🍽️ DINING - Table {order.tableNumber || "?"}
-                </Badge>
+                <span className="px-2.5 py-1 rounded-lg text-xs font-extrabold bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/20 flex items-center gap-1">
+                  🍽️ Table #{order.tableNumber || "?"}
+                </span>
               ) : (
-                <Badge variant="neutral" size="sm">
+                <span className="px-2.5 py-1 rounded-lg text-xs font-extrabold bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/20 flex items-center gap-1">
                   🥡 TAKEAWAY
-                </Badge>
+                </span>
               )}
-              <span className="text-xs text-slate-400">•</span>
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                {order.customerPhone || "WhatsApp Customer"}
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400 truncate">
+                {order.customerPhone ? order.customerPhone.split('@')[0] : "Customer"}
               </span>
             </div>
-            <Badge variant="neutral" size="sm">
-              <Clock className="h-3 w-3 mr-1" />
-              {order.minutesAgo === 0 ? "Abhi" : `${order.minutesAgo}m ago`}
-            </Badge>
           </div>
 
-          {/* Item breakdown preview */}
-          <div className="space-y-1 py-1 border-y border-slate-100 dark:border-slate-800/80 text-xs">
-            {order.items.slice(0, 3).map((item, i) => (
-              <div key={i} className="flex justify-between items-center text-slate-700 dark:text-slate-300">
-                <span className="font-medium truncate max-w-[180px]">
-                  <span className="font-bold text-slate-900 dark:text-slate-100 mr-1.5">{item.quantity}x</span>
-                  {item.name}
-                </span>
-                <span className="font-semibold text-slate-500">₹{item.price * item.quantity}</span>
-              </div>
-            ))}
-            {order.items.length > 3 && (
-              <p className="text-[11px] font-semibold text-brand-600 dark:text-brand-400 pt-0.5">
-                +{order.items.length - 3} and items...
-              </p>
+          {/* Item Breakdown List */}
+          <div className="space-y-1.5 py-2 px-3 rounded-xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200/60 dark:border-slate-800 text-xs">
+            {order.items && order.items.length > 0 ? (
+              order.items.map((item, i) => (
+                <div key={i} className="flex justify-between items-center text-slate-800 dark:text-slate-200 py-0.5">
+                  <div className="flex items-center gap-2 min-w-0 pr-2">
+                    <span className="font-black text-xs text-brand-600 dark:text-brand-400 bg-brand-500/10 px-1.5 py-0.5 rounded-md shrink-0">
+                      {item.quantity}x
+                    </span>
+                    <span className="font-bold text-slate-900 dark:text-slate-100 truncate text-xs">
+                      {item.name}
+                    </span>
+                  </div>
+                  <span className="font-semibold text-slate-500 dark:text-slate-400 text-xs shrink-0">
+                    ₹{item.price * item.quantity}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <div className="text-[11px] italic text-slate-400 py-1 text-center">Loading item details...</div>
             )}
           </div>
 
-          {/* Card Footer Actions */}
-          <div className="flex items-center justify-between pt-1">
+          {/* Customer Special Cooking Instructions (Only shown if provided) */}
+          {order.notes && order.notes.trim() ? (
+            <div className="text-xs p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 space-y-0.5">
+              <span className="font-black uppercase tracking-wider text-[10px] text-amber-600 dark:text-amber-400 block">
+                📝 Kitchen Note:
+              </span>
+              <p className="font-semibold text-xs leading-snug">{order.notes}</p>
+            </div>
+          ) : null}
+
+          {/* Card Footer: Total Amount & Action Button */}
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
             <div>
-              <span className="text-[11px] text-slate-400 uppercase font-semibold block">Total</span>
-              <span className="font-heading font-extrabold text-sm text-slate-900 dark:text-slate-100">
+              <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Total Amount</span>
+              <span className="font-heading font-black text-base text-slate-900 dark:text-slate-100">
                 ₹{order.totalAmount}
               </span>
             </div>
@@ -316,9 +363,9 @@ export default function KanbanLiveOrdersPage() {
                   size="sm"
                   variant="primary"
                   onClick={() => handleTransition(order.backendId, order.id, "accepted")}
-                  className="gap-1 shadow-sm"
+                  className="gap-1 px-4 font-bold shadow-sm"
                 >
-                  <Play className="h-3 w-3 fill-white" />
+                  <Play className="h-3.5 w-3.5 fill-white" />
                   <span>Accept</span>
                 </Button>
               )}
@@ -328,10 +375,10 @@ export default function KanbanLiveOrdersPage() {
                   size="sm"
                   variant="warning"
                   onClick={() => handleTransition(order.backendId, order.id, "preparing")}
-                  className="gap-1"
+                  className="gap-1 px-4 font-bold"
                 >
-                  <Clock className="h-3 w-3" />
-                  <span>Cook</span>
+                  <Clock className="h-3.5 w-3.5" />
+                  <span>Start Cooking</span>
                 </Button>
               )}
 
@@ -340,10 +387,10 @@ export default function KanbanLiveOrdersPage() {
                   size="sm"
                   variant="success"
                   onClick={() => handleTransition(order.backendId, order.id, "ready")}
-                  className="gap-1"
+                  className="gap-1 px-4 font-bold"
                 >
-                  <CheckCircle className="h-3 w-3" />
-                  <span>Ready</span>
+                  <CheckCircle className="h-3.5 w-3.5" />
+                  <span>Mark Ready</span>
                 </Button>
               )}
 
@@ -352,10 +399,10 @@ export default function KanbanLiveOrdersPage() {
                   size="sm"
                   variant="outline"
                   onClick={() => handleTransition(order.backendId, order.id, "completed")}
-                  className="gap-1 text-emerald-600 dark:text-emerald-400"
+                  className="gap-1 px-4 font-bold text-emerald-600 dark:text-emerald-400"
                 >
-                  <CheckCircle2 className="h-3 w-3" />
-                  <span>Served</span>
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  <span>Serve</span>
                 </Button>
               )}
             </div>
@@ -391,43 +438,90 @@ export default function KanbanLiveOrdersPage() {
         </div>
       ) : (
         <>
-          {/* Header Controls */}
-          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-            <div>
-              <div className="flex items-center gap-2.5">
-                <h1 className="font-heading text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100">
-                  Live KOT Kanban Board
-                </h1>
-                <Badge variant="success" pulse size="sm">
-                  LIVE POLLED
-                </Badge>
+          {/* Header Controls & Live Search */}
+          <div className="space-y-3">
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <h1 className="font-heading text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100">
+                    Live Kitchen KOT Board
+                  </h1>
+                  <Badge variant="success" pulse size="sm" className="font-bold">
+                    LIVE POLLED
+                  </Badge>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Real-time POS & WhatsApp Kitchen Display System (KDS)
+                </p>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Real-time WhatsApp & POS Kitchen Display System (KDS)
-              </p>
+
+              <div className="flex items-center gap-2">
+                {/* Search Bar */}
+                <div className="relative flex-1 sm:w-56">
+                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={filterQuery}
+                    onChange={(e) => setFilterQuery(e.target.value)}
+                    placeholder="Search #ORD, item, table..."
+                    className="w-full pl-8 pr-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                  />
+                </div>
+
+                {/* Sound alert toggle */}
+                <Button
+                  variant={soundEnabled ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={toggleSound}
+                  className="gap-1.5 font-semibold text-xs h-8 px-2.5"
+                >
+                  {soundEnabled ? <Volume2 className="h-3.5 w-3.5 text-emerald-500" /> : <VolumeX className="h-3.5 w-3.5 text-slate-400" />}
+                  <span className="hidden xs:inline">{soundEnabled ? "Sound ON" : "Sound OFF"}</span>
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchOrders(false)}
+                  className="gap-1 h-8 px-2.5"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span className="hidden xs:inline">Refresh</span>
+                </Button>
+              </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              {/* Sound alert toggle */}
-              <Button
-                variant={soundEnabled ? "secondary" : "ghost"}
-                size="sm"
-                onClick={toggleSound}
-                className="gap-2 font-semibold text-xs"
+            {/* Mobile & Tablet Responsive Status Tabs */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none lg:hidden">
+              <button
+                onClick={() => setActiveTab("all")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+                  activeTab === "all"
+                    ? "bg-brand-600 text-white shadow-sm"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+                }`}
               >
-                {soundEnabled ? <Volume2 className="h-4 w-4 text-emerald-500" /> : <VolumeX className="h-4 w-4 text-slate-400" />}
-                <span>{soundEnabled ? "Sound ON" : "Sound OFF"}</span>
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fetchOrders(false)}
-                className="gap-2"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                <span>Refresh</span>
-              </Button>
+                All Orders ({orders.length})
+              </button>
+              {KANBAN_COLUMNS.map((col) => {
+                const count = orders.filter((o) => col.statuses.includes(o.status)).length;
+                return (
+                  <button
+                    key={col.id}
+                    onClick={() => setActiveTab(col.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
+                      activeTab === col.id
+                        ? "bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 shadow-sm"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+                    }`}
+                  >
+                    <span>{col.label}</span>
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/10 dark:bg-white/20">
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -441,9 +535,9 @@ export default function KanbanLiveOrdersPage() {
               onAction={() => fetchOrders(true)}
             />
           ) : (
-            /* STATE 4: SUCCESS / POPULATED STATE (Kanban Columns) */
+            /* STATE 4: POPULATED STATE (Responsive Kanban Columns) */
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-start">
-              {KANBAN_COLUMNS.map((col) => {
+              {KANBAN_COLUMNS.filter((col) => activeTab === "all" || activeTab === col.id).map((col) => {
                 const count = orders.filter((o) => col.statuses.includes(o.status)).length;
                 return (
                   <div
@@ -526,6 +620,16 @@ export default function KanbanLiveOrdersPage() {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Special Instructions / Cooking Notes */}
+            <div className="p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-950/20 border border-amber-500/30 text-xs space-y-1">
+              <h4 className="font-heading font-bold text-xs uppercase text-amber-600 dark:text-amber-400 tracking-wider flex items-center gap-1.5">
+                <span>📝 Special Cooking Instructions</span>
+              </h4>
+              <p className="font-semibold text-slate-800 dark:text-slate-200 text-sm pt-0.5">
+                {selectedOrder.notes && selectedOrder.notes.trim() ? selectedOrder.notes : "No special instructions"}
+              </p>
             </div>
 
             {/* Item Breakdown */}

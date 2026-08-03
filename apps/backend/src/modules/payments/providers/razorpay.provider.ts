@@ -101,11 +101,23 @@ export class RazorpayProvider extends BaseProvider {
     secret: string
   ): boolean {
     if (!signature || !secret) return false;
-    const expectedSignature = crypto
-      .createHmac('sha256', secret)
-      .update(payload)
-      .digest('hex');
-    return crypto.timingSafeEqual(Buffer.from(expectedSignature), Buffer.from(signature));
+    try {
+      const expectedSignature = crypto
+        .createHmac('sha256', secret)
+        .update(payload)
+        .digest('hex');
+      
+      const sigBuffer = Buffer.from(signature);
+      const expectedBuffer = Buffer.from(expectedSignature);
+
+      if (sigBuffer.length !== expectedBuffer.length) {
+        return false;
+      }
+
+      return crypto.timingSafeEqual(expectedBuffer, sigBuffer);
+    } catch (err) {
+      return false;
+    }
   }
 
   public override async verifyWebhook(
@@ -114,43 +126,75 @@ export class RazorpayProvider extends BaseProvider {
     webhookSecret?: string
   ): Promise<WebhookVerificationResult> {
     const signature = (headers['x-razorpay-signature'] || headers['X-Razorpay-Signature']) as string;
-    const rawBody = typeof payload === 'string' ? payload : JSON.stringify(payload);
+
+    // Prefer raw string/buffer for cryptographic HMAC verification
+    const rawBody = typeof payload === 'string' || Buffer.isBuffer(payload)
+      ? payload
+      : JSON.stringify(payload);
 
     let isValid = false;
     if (webhookSecret && signature) {
-      try {
-        isValid = this.verifySignature(rawBody, signature, webhookSecret);
-      } catch (err) {
-        isValid = false;
-      }
+      isValid = this.verifySignature(rawBody, signature, webhookSecret);
+    } else if (signature) {
+      // If signature is present but restaurant has not configured a custom webhookSecret yet in DB
+      const { logger } = require('../../../infrastructure/logger/logger');
+      logger.warn('⚠️ Webhook secret not configured in DB for restaurant. Fallback active until secret is saved in settings.');
+      isValid = true;
     } else {
-      // In development / sandbox without configured secret, allow webhook processing
       isValid = true;
     }
 
-    const eventObj = typeof payload === 'string' ? JSON.parse(payload) : payload;
+    let eventObj: any = {};
+    try {
+      if (Buffer.isBuffer(payload)) {
+        eventObj = JSON.parse(payload.toString('utf-8'));
+      } else if (typeof payload === 'string') {
+        eventObj = JSON.parse(payload);
+      } else {
+        eventObj = payload || {};
+      }
+    } catch (_) {
+      eventObj = {};
+    }
     const event = eventObj.event || 'unknown';
     const paymentEntity = eventObj.payload?.payment?.entity || {};
     const linkEntity = eventObj.payload?.payment_link?.entity || {};
+    const orderEntity = eventObj.payload?.order?.entity || {};
 
-    const extractedOrderId = 
+    let extractedOrderId = 
       linkEntity.notes?.orderId || 
+      linkEntity.notes?.order_id || 
       paymentEntity.notes?.orderId || 
-      linkEntity.reference_id || 
       paymentEntity.notes?.order_id ||
-      linkEntity.notes?.order_id;
+      orderEntity.notes?.orderId ||
+      orderEntity.notes?.order_id ||
+      linkEntity.reference_id || 
+      paymentEntity.order_id ||
+      orderEntity.receipt;
+
+    // Fallback: Check if description contains Order ID pattern (e.g. "Payment for Order #<orderId>")
+    if (!extractedOrderId && typeof paymentEntity.description === 'string') {
+      const match = paymentEntity.description.match(/Order #([a-f0-9\-]+)/i);
+      if (match) {
+        extractedOrderId = match[1];
+      }
+    }
 
     let status: 'success' | 'failed' | 'cancelled' | 'expired' | 'ignored' = 'failed';
-    if (event === 'payment.captured' || event === 'payment_link.paid' || event === 'order.paid') {
+    if (
+      event === 'payment.captured' ||
+      event === 'payment_link.paid' ||
+      event === 'order.paid'
+    ) {
       status = 'success';
-    } else if (event === 'payment.failed') {
+    } else if (event === 'payment.failed' || event === 'payment.authorized.failed') {
       status = 'failed';
     } else if (event === 'payment_link.cancelled') {
       status = 'cancelled';
     } else if (event === 'payment_link.expired') {
       status = 'expired';
-    } else if (event === 'payment.authorized' || event === 'payment.authorized.failed') {
-      // Return status 'ignored' for intermediate events so they are silently skipped without affecting real failed or success status
+    } else if (event === 'payment.authorized') {
+      // Informational intermediate event: do not transition order to paid until capture/settlement event arrives
       return {
         isValid,
         event,

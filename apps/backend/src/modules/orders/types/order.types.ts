@@ -65,6 +65,7 @@ export interface Order {
   items?: OrderItemSnapshot[];
   orderType?: 'takeaway' | 'dining' | string;
   tableNumber?: number | null;
+  notes?: string | null;
   customerId?: string | null;
   customerName?: string | null;
   customerAddress?: string | null;

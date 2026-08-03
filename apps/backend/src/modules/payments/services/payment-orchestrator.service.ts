@@ -95,6 +95,7 @@ export class PaymentOrchestratorService {
         paymentLinkUrl: linkResponse.paymentUrl,
         paymentLinkShortUrl: linkResponse.shortUrl ?? linkResponse.paymentUrl,
         providerName,
+        providerOrderId: linkResponse.paymentLinkId,
         gatewayData: {
           ...payment.gatewayData,
           paymentLinkId: linkResponse.paymentLinkId,
@@ -118,9 +119,10 @@ export class PaymentOrchestratorService {
         },
       });
 
-      // Update with link status and URL
+      // Update with link status and URL and providerOrderId
       payment = await this.paymentRepo.update(payment.id, {
         paymentStatus: 'link_sent',
+        providerOrderId: linkResponse.paymentLinkId,
         paymentLinkUrl: linkResponse.paymentUrl,
         paymentLinkShortUrl: linkResponse.shortUrl ?? linkResponse.paymentUrl,
         expiresAt: linkResponse.expiresAt,
@@ -158,7 +160,11 @@ export class PaymentOrchestratorService {
     const secret = config.webhookSecret ? config.webhookSecret : undefined;
     const verification = await provider.verifyWebhook(rawBody, headers, secret);
 
+    console.log('🔍 [WEBHOOK DIAGNOSTIC 1] verificationResult:', JSON.stringify(verification));
+    console.log('🔍 [WEBHOOK DIAGNOSTIC 2] verificationResult.orderId:', verification.orderId);
+
     if (!verification.isValid) {
+      console.log('❌ [EARLY RETURN] Signature or payload validation failed');
       logger.warn(
         { restaurantId, providerName, verification },
         '⚠️ Webhook signature or payload validation failed.'
@@ -168,60 +174,127 @@ export class PaymentOrchestratorService {
 
     const orderId = verification.orderId;
     if (!orderId) {
+      console.log('❌ [EARLY RETURN] No orderId extracted from webhook payload');
       logger.warn({ verification }, 'Webhook payload contained no orderId mapping.');
       return { success: false, status: 'ignored' };
     }
 
     const payment = await this.paymentRepo.getByOrderId(orderId);
+    console.log('🔍 [WEBHOOK DIAGNOSTIC 3] payment returned from repository:', JSON.stringify(payment));
+
     if (!payment) {
+      console.log('❌ [EARLY RETURN] Payment record not found in repository for orderId:', orderId);
       logger.warn({ orderId }, 'Webhook received for non-existent payment order.');
       return { success: false, status: 'ignored' };
     }
 
-    // Idempotency check: if already verified or completed, ignore repeat delivery
-    if (payment.paymentStatus === 'verified' || payment.paymentStatus === 'captured') {
-      logger.info({ paymentId: payment.id }, 'Idempotent webhook delivery skipped (Already verified).');
+    console.log('🔍 [WEBHOOK DIAGNOSTIC 4] payment.restaurantId:', payment.restaurantId);
+    console.log('🔍 [WEBHOOK DIAGNOSTIC 5] restaurantId from route:', restaurantId);
+    console.log('🔍 [WEBHOOK DIAGNOSTIC 6] current payment status:', payment.paymentStatus);
+
+    // Fetch current order status for diagnostic logging
+    let currentOrderStatus = 'unknown';
+    try {
+      const { OrderService } = require('../../orders/services/order.service');
+      const orderService = new OrderService();
+      const realOrder = await orderService.getOrderById(payment.orderId);
+      currentOrderStatus = realOrder.status;
+    } catch (err: any) {
+      console.log('⚠️ [WEBHOOK DIAGNOSTIC CATCH] Failed to fetch order status:', err.message);
+    }
+    console.log('🔍 [WEBHOOK DIAGNOSTIC 7] current order status:', currentOrderStatus);
+
+    // STRICT MULTI-TENANT ISOLATION GUARANTEE: Cross-Tenant Mismatch Rejection
+    if (payment.restaurantId !== restaurantId) {
+      console.log('❌ [EARLY RETURN] Tenant ID mismatch! payment.restaurantId !== restaurantId');
+      logger.error(
+        { routingRestaurantId: restaurantId, paymentRestaurantId: payment.restaurantId, orderId },
+        '🚨 CROSS-TENANT VIOLATION DETECTED: Webhook restaurantId does not match Payment record restaurantId!'
+      );
+      return { success: false, status: 'ignored' };
+    }
+
+    // Distributed Concurrency Lock via Redis to eliminate double-processing race conditions
+    const { redis } = require('../../../infrastructure/redis/redis.client');
+    const lockKey = `lock:webhook:${payment.id}`;
+    const acquiredLock = await redis.getClient().set(lockKey, 'processing', 'EX', 15, 'NX');
+    if (!acquiredLock) {
+      console.log('❌ [EARLY RETURN] Redis concurrency lock block active for paymentId:', payment.id);
+      logger.warn({ paymentId: payment.id }, '⚠️ Concurrent webhook delivery suppressed by Redis lock.');
       return { success: true, status: payment.paymentStatus, orderId };
     }
 
-    // Map webhook outcome to PaymentStatus
-    let targetStatus: PaymentStatus = payment.paymentStatus;
-    if (verification.status === 'success') {
-      targetStatus = 'verified';
-    } else if (verification.status === 'failed') {
-      targetStatus = 'failed';
-    } else if (verification.status === 'cancelled') {
-      targetStatus = 'cancelled';
-    } else if (verification.status === 'expired') {
-      targetStatus = 'expired';
+    try {
+      // Idempotency check: if already verified or completed, ignore repeat delivery
+      if (payment.paymentStatus === 'verified' || payment.paymentStatus === 'captured') {
+        console.log('❌ [EARLY RETURN] Idempotency check triggered: payment already verified');
+        logger.info({ paymentId: payment.id }, 'Idempotent webhook delivery skipped (Already verified).');
+        return { success: true, status: payment.paymentStatus, orderId };
+      }
+
+      // Map webhook outcome to PaymentStatus
+      let targetStatus: PaymentStatus = payment.paymentStatus;
+      if (verification.status === 'success') {
+        targetStatus = 'verified';
+      } else if (verification.status === 'failed') {
+        targetStatus = 'failed';
+      } else if (verification.status === 'cancelled') {
+        targetStatus = 'cancelled';
+      } else if (verification.status === 'expired') {
+        targetStatus = 'expired';
+      }
+
+      console.log('🔍 [WEBHOOK DIAGNOSTIC 8] target payment status:', targetStatus);
+      console.log('🔍 [WEBHOOK DIAGNOSTIC 9] target order status:', targetStatus === 'verified' ? 'paid' : targetStatus);
+
+      // Update payment state
+      const txnId = verification.providerTransactionId ? String(verification.providerTransactionId) : undefined;
+      console.log('🔄 [REPO UPDATE START] Updating payment repository for paymentId:', payment.id);
+      
+      let updatedPayment;
+      try {
+        updatedPayment = await this.paymentRepo.update(payment.id, {
+          paymentStatus: targetStatus,
+          providerTransactionId: txnId,
+          verifiedAmount: verification.amount,
+          completedAt: targetStatus === 'verified' ? new Date().toISOString() : undefined,
+          failedAt: targetStatus === 'failed' || targetStatus === 'cancelled' ? new Date().toISOString() : undefined,
+        });
+        console.log('🔍 [WEBHOOK DIAGNOSTIC 12 & 13] repository update result (1 row updated):', JSON.stringify(updatedPayment));
+      } catch (repoErr: any) {
+        console.log('❌ [WEBHOOK DIAGNOSTIC 11 - CATCH] Payment repository update failed:', repoErr.message);
+        throw repoErr;
+      }
+
+      // Execute Automated Business Workflows
+      if (targetStatus === 'verified') {
+        console.log('🔄 [STATE TRANSITION START] Executing handlePaymentSuccess...');
+        try {
+          await this.handlePaymentSuccess(updatedPayment);
+          console.log('🔍 [WEBHOOK DIAGNOSTIC 14] state transition result: SUCCESS');
+        } catch (transitionErr: any) {
+          console.log('❌ [WEBHOOK DIAGNOSTIC 11 - CATCH] handlePaymentSuccess failed:', transitionErr.message);
+        }
+      } else if (targetStatus === 'failed') {
+        await this.handlePaymentFailed(updatedPayment);
+      } else if (targetStatus === 'cancelled') {
+        await this.handlePaymentCancelled(updatedPayment);
+      } else if (targetStatus === 'expired') {
+        await this.handlePaymentExpired(updatedPayment);
+      }
+
+      return {
+        success: true,
+        status: targetStatus,
+        orderId,
+      };
+    } catch (globalErr: any) {
+      console.log('❌ [WEBHOOK DIAGNOSTIC 11 - GLOBAL CATCH] Error in handleWebhook try block:', globalErr.message);
+      throw globalErr;
+    } finally {
+      // Release short-term concurrency lock after state transition completes
+      await redis.getClient().del(lockKey).catch(() => {});
     }
-
-    // Update payment state
-    const txnId = verification.providerTransactionId ? String(verification.providerTransactionId) : undefined;
-    const updatedPayment = await this.paymentRepo.update(payment.id, {
-      paymentStatus: targetStatus,
-      providerTransactionId: txnId,
-      verifiedAmount: verification.amount,
-      completedAt: targetStatus === 'verified' ? new Date().toISOString() : undefined,
-      failedAt: targetStatus === 'failed' || targetStatus === 'cancelled' ? new Date().toISOString() : undefined,
-    });
-
-    // Execute Automated Business Workflows
-    if (targetStatus === 'verified') {
-      await this.handlePaymentSuccess(updatedPayment);
-    } else if (targetStatus === 'failed') {
-      await this.handlePaymentFailed(updatedPayment);
-    } else if (targetStatus === 'cancelled') {
-      await this.handlePaymentCancelled(updatedPayment);
-    } else if (targetStatus === 'expired') {
-      await this.handlePaymentExpired(updatedPayment);
-    }
-
-    return {
-      success: true,
-      status: targetStatus,
-      orderId,
-    };
   }
 
   /**
@@ -231,22 +304,33 @@ export class PaymentOrchestratorService {
     logger.info({ paymentId: payment.id, orderId: payment.orderId }, '🎉 Payment VERIFIED! Auto-confirming order.');
 
     // 1. Transition Order to confirmed / paid
+    const { OrderService } = require('../../orders/services/order.service');
+    const orderService = new OrderService();
+    
     try {
-      const { OrderService } = require('../../orders/services/order.service');
-      const orderService = new OrderService();
       await orderService.transitionOrder(payment.orderId, 'paid');
     } catch (err) {
       logger.error({ err, orderId: payment.orderId }, 'Failed to transition order state');
     }
 
-    // 2. Notify Restaurant Kitchen Workflow
+    // 2. Strict Persistence Verification: Confirm order record & items exist before clearing cart/session
+    const persistedOrder = await orderService.getOrderById(payment.orderId).catch(() => null);
+    if (!persistedOrder || !persistedOrder.id) {
+      logger.error(
+        { orderId: payment.orderId, paymentId: payment.id },
+        '🚨 CRITICAL PERSISTENCE FAILURE: Order record missing in database! Session reset ABORTED to prevent data loss.'
+      );
+      throw new Error(`Order persistence verification failed for orderId: ${payment.orderId}`);
+    }
+
+    // 3. Notify Restaurant Kitchen Workflow
     try {
-      logger.info({ restaurantId: payment.restaurantId, orderId: payment.orderId }, '📢 Kitchen notified of new paid order.');
+      logger.info({ restaurantId: payment.restaurantId, orderId: payment.orderId, itemsCount: persistedOrder.items?.length }, '📢 Kitchen notified of new paid order with persisted snapshot.');
     } catch (err) {
       logger.warn({ err }, 'Failed to notify kitchen');
     }
 
-    // 3. Clear Customer Cart and Reset Conversation Session State
+    // 4. Safe Session Reset: Clear cart ONLY after order persistence is 100% verified
     try {
       const { SessionService } = require('../../conversations/session.service');
       const sessionService = new SessionService();

@@ -85,6 +85,8 @@ export default function CheckoutModal({
     return cart.customerPhone || "";
   });
 
+  const [notes, setNotes] = useState<string>("");
+
   const paymentMethodsList = Array.isArray(capabilities?.paymentMethods)
     ? capabilities.paymentMethods
     : ["cash"];
@@ -113,6 +115,8 @@ export default function CheckoutModal({
         customerPhone: whatsappJid || phone,
         contactPhone: phone || whatsappJid,
         paymentMethod,
+        notes: notes.trim() || undefined,
+        instructions: notes.trim() || undefined,
         items: cart.items.map((i) => ({
           menuItemId: i.menuItemId,
           variantId: i.variantId,
@@ -264,6 +268,17 @@ export default function CheckoutModal({
                     onChange={(e) => setPhone(e.target.value)}
                   />
                   <p className="text-[11px] text-slate-400 mt-1">Live order updates will be sent to your WhatsApp.</p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-extrabold text-slate-700 block mb-1">Special Cooking Instructions / Request (Optional)</label>
+                  <textarea
+                    rows={2}
+                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 resize-none"
+                    placeholder="e.g. Less spicy, Extra green chutney, No onions..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                  />
                 </div>
               </div>
             )}

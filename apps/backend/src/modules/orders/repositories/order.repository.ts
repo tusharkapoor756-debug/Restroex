@@ -215,6 +215,7 @@ export class OrderRepository {
       customerPhone: orderData.customerPhone,
       humanReadableId,
       totalAmount: orderData.totalAmount,
+      notes: orderData.notes || null,
       items: items.map(item => ({
         name: item.itemNameSnapshot,
         variantName: item.variantNameSnapshot,
@@ -244,6 +245,7 @@ export class OrderRepository {
         customer_id: orderData.customerId,
         order_type: orderData.orderType || 'takeaway',
         table_number: orderData.tableNumber || null,
+        notes: orderData.notes || null,
       })
       .select('*')
       .single();
@@ -387,11 +389,13 @@ export class OrderRepository {
       invoiceNumber: row.invoice_number,
       orderType: row.order_type || 'takeaway',
       tableNumber: row.table_number ? Number(row.table_number) : null,
+      notes: row.notes || row.instructions || row.cooking_instructions || row.receipt_snapshot?.notes || null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       customerId: row.customer_id,
       customerName: row.customer?.name || row.customer_name || null,
       customerAddress: row.customer?.address || row.customer_address || null,
+      items,
       payment,
     };
   }

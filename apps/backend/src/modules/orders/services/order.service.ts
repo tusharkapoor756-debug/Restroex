@@ -141,7 +141,8 @@ export class OrderService {
     cart: Cart,
     idempotencyKey: string,
     orderType: 'takeaway' | 'dining' = 'takeaway',
-    tableNumber?: number | null
+    tableNumber?: number | null,
+    notes?: string | null
   ): Promise<{ order: Order; payment: any; paymentContext?: any }> {
     // 1. Active Idempotency Check — return existing order ONLY if it is still active (non-terminal)
     const existingActiveOrder = await this.repository.findActiveByIdempotencyKey(idempotencyKey);
@@ -199,6 +200,7 @@ export class OrderService {
       customerId: customer.id,
       orderType,
       tableNumber: tableNumber ? Math.round(Number(tableNumber)) : null,
+      notes: notes || null,
     };
 
     // 5. Persist Order in database (including immutable snapshot items)
@@ -255,6 +257,7 @@ export class OrderService {
 
     // Phase 3: Emit Decoupled Domain Event
     const eventTypeMap: Record<string, any> = {
+      paid: 'PAYMENT_COMPLETED',
       accepted: 'ORDER_ACCEPTED',
       preparing: 'ORDER_PREPARING',
       ready: 'ORDER_READY',

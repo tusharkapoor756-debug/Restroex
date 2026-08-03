@@ -55,10 +55,14 @@ export default function OrderingPage({ params }: Props) {
         }
       }
 
-      // Post-payment return (?orderId=...)
+      // Post-payment return (?orderId=...&status=success)
       const urlOrderId = searchParams.get("orderId");
+      const urlStatus = searchParams.get("status");
       if (urlOrderId) {
         setCompletedOrderId(urlOrderId);
+        if (urlStatus === "success") {
+          setOrderStatus("paid");
+        }
         cart.clearCart();
       }
     }

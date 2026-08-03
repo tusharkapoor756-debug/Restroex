@@ -242,7 +242,7 @@ export default function ProductionSettingsPage() {
             Restaurant & Payment Settings
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Configure business details, Razorpay & online payment gateways, UPI QR codes, and team roles.
+            Configure business details, Razorpay & online payment gateways, and UPI QR codes.
           </p>
         </div>
 
@@ -259,7 +259,6 @@ export default function ProductionSettingsPage() {
           { id: "gateway", label: "Payment Gateway Integration", icon: Zap },
           { id: "payment", label: "UPI & QR Upload", icon: CreditCard },
           { id: "bot", label: "WhatsApp Bot Persona", icon: Smartphone },
-          { id: "team", label: "Team & Staff Roles", icon: Users },
         ].map((t) => {
           const Icon = t.icon;
           const isActive = activeTab === t.id;

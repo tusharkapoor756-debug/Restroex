@@ -45,10 +45,11 @@ export class PaymentOrchestratorController {
   public async handleWebhook(req: Request, res: Response): Promise<void> {
     try {
       const { restaurantId, provider } = req.params;
+      const rawPayload = (req as any).rawBody ?? req.body;
       const result = await this.orchestrator.handleWebhook(
         restaurantId as string,
         provider as string,
-        req.body,
+        rawPayload,
         req.headers
       );
 
@@ -65,6 +66,13 @@ export class PaymentOrchestratorController {
   public async saveProviderConfig(req: Request, res: Response): Promise<void> {
     try {
       const { restaurantId, providerName, credentials, isEnabled, isSandbox, webhookSecret } = req.body;
+      const authenticatedTenant = (req as any).restaurantId;
+
+      if (authenticatedTenant && authenticatedTenant !== restaurantId) {
+        res.status(403).json({ success: false, error: 'Forbidden: Access to specified restaurant payment configuration is denied.' });
+        return;
+      }
+
       const config = await this.healthService.saveProviderConfig(restaurantId, providerName, {
         credentials,
         isEnabled: isEnabled !== undefined ? Boolean(isEnabled) : undefined,
@@ -84,6 +92,13 @@ export class PaymentOrchestratorController {
   public async testGatewayConnection(req: Request, res: Response): Promise<void> {
     try {
       const { restaurantId, providerName, credentials } = req.body;
+      const authenticatedTenant = (req as any).restaurantId;
+
+      if (authenticatedTenant && authenticatedTenant !== restaurantId) {
+        res.status(403).json({ success: false, error: 'Forbidden: Access to specified restaurant gateway connection test is denied.' });
+        return;
+      }
+
       const healthResult = await this.healthService.testGatewayConnection(
         restaurantId,
         providerName,
@@ -102,6 +117,13 @@ export class PaymentOrchestratorController {
   public async getGatewayStatuses(req: Request, res: Response): Promise<void> {
     try {
       const { restaurantId } = req.params;
+      const authenticatedTenant = (req as any).restaurantId;
+
+      if (authenticatedTenant && authenticatedTenant !== restaurantId) {
+        res.status(403).json({ success: false, error: 'Forbidden: Access to specified restaurant gateway status is denied.' });
+        return;
+      }
+
       const configs = await this.healthService.getRestaurantGatewayStatuses(restaurantId as string);
       res.status(200).json({ success: true, data: configs });
     } catch (error: any) {

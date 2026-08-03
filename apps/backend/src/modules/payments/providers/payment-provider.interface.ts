@@ -40,7 +40,7 @@ export interface WebhookVerificationResult {
   providerTransactionId?: string;
   amount?: number;
   currency?: string;
-  status?: 'success' | 'failed' | 'cancelled' | 'expired';
+  status?: 'success' | 'failed' | 'cancelled' | 'expired' | 'ignored';
   rawPayload?: any;
 }
 

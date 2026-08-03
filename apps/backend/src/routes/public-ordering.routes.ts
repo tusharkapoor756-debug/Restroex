@@ -51,9 +51,13 @@ router.post(
       orderMode,   // frontend field name
       orderType,   // legacy field name (kept for backward compat)
       tableNumber,
+      notes,       // customer cooking instructions
+      instructions,
       items,
       paymentMethod,
     } = req.body;
+
+    const resolvedNotes = notes || instructions || null;
 
     const resolvedOrderType: 'takeaway' | 'dining' =
       (orderMode ?? orderType ?? 'takeaway') === 'dining' ? 'dining' : 'takeaway';
@@ -91,7 +95,8 @@ router.post(
       cart,
       idempotencyKey,
       resolvedOrderType,
-      tableNumber ? Number(tableNumber) : undefined
+      tableNumber ? Number(tableNumber) : undefined,
+      resolvedNotes
     );
 
     // 4b. Update customer name in DB if provided by web checkout form.
@@ -176,12 +181,28 @@ router.get(
     const orderId = String(req.params.orderId);
 
     const order = await orderService.getOrderById(orderId);
+
+    // Fetch associated payment status to verify payment state
+    let paymentStatus = 'pending';
+    try {
+      const payment = await paymentOrchestrator['paymentRepo'].getByOrderId(orderId);
+      if (payment) {
+        paymentStatus = payment.paymentStatus;
+      }
+    } catch (_) {}
+
+    // If payment is verified/captured but order status hasn't transitioned yet, report 'paid'
+    const effectiveStatus = (paymentStatus === 'verified' || paymentStatus === 'captured') && (order.status === 'checkout_pending' || order.status === 'payment_pending')
+      ? 'paid'
+      : order.status;
+
     res.json({
       success: true,
       data: {
         id: order.id,
         humanReadableId: order.humanReadableId,
-        status: order.status,
+        status: effectiveStatus,
+        paymentStatus,
         totalAmount: order.totalAmount,
         orderType: order.orderType,
         tableNumber: order.tableNumber,
