@@ -27,9 +27,11 @@ router.use(orderRoutes);
 router.use(receiptRoutes);
 import uploadRoutes from './upload.routes';
 import publicOrderingRoutes from './public-ordering.routes';
+import billingRoutes from './billing.routes';
 
 router.use('/media', uploadRoutes);
 router.use('/public', publicOrderingRoutes);
+router.use('/billing', billingRoutes);
 
 
 // Feature modules will be registered here:

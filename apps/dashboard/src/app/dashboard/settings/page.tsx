@@ -7,6 +7,7 @@ import Badge from "../../../components/ui/Badge";
 import Card from "../../../components/ui/Card";
 import { Input, Select } from "../../../components/ui/Input";
 import { Modal } from "../../../components/ui/Modal";
+import TaxesAndChargesTab from "./components/TaxesAndChargesTab";
 import {
   Building2,
   Receipt,
@@ -39,7 +40,7 @@ interface StaffMember {
 
 export default function ProductionSettingsPage() {
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState<"profile" | "tax" | "gateway" | "payment" | "bot" | "team">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "charges" | "tax" | "gateway" | "payment" | "bot" | "team">("profile");
   const [isSaving, setIsSaving] = useState(false);
   const [restaurantId, setRestaurantId] = useState<string>("rest_demo_1001");
 
@@ -256,6 +257,7 @@ export default function ProductionSettingsPage() {
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-px overflow-x-auto">
         {[
           { id: "profile", label: "Store Profile", icon: Building2 },
+          { id: "charges", label: "Taxes & Charges", icon: Receipt },
           { id: "gateway", label: "Payment Gateway Integration", icon: Zap },
           { id: "payment", label: "UPI & QR Upload", icon: CreditCard },
           { id: "bot", label: "WhatsApp Bot Persona", icon: Smartphone },
@@ -595,48 +597,9 @@ export default function ProductionSettingsPage() {
         </Card>
       )}
 
-      {/* TAB CONTENT 5: Team & Staff Roles */}
-      {activeTab === "team" && (
-        <Card className="space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-            <div>
-              <h3 className="font-heading font-bold text-base text-slate-900 dark:text-slate-100">Team & Staff Access Roles</h3>
-              <p className="text-xs text-slate-500">Manage POS operator accounts (admin, manager, staff)</p>
-            </div>
-
-            <Button variant="primary" size="sm" onClick={() => setIsAddStaffOpen(true)} className="gap-2 font-bold">
-              <UserPlus className="h-4 w-4" />
-              <span>Add Staff Member</span>
-            </Button>
-          </div>
-
-          <div className="space-y-3 text-xs">
-            {staffList.map((member) => (
-              <div key={member.id} className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80">
-                <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-xl bg-brand-100 dark:bg-brand-950 font-bold text-brand-600 dark:text-brand-400 flex items-center justify-center">
-                    {member.name.substring(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <span className="font-bold text-slate-900 dark:text-slate-100 block">{member.name}</span>
-                    <span className="text-slate-500 text-[11px]">{member.email}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <Badge variant={member.role === "admin" ? "brand" : member.role === "manager" ? "warning" : "neutral"}>
-                    {member.role.toUpperCase()}
-                  </Badge>
-                  {member.role !== "admin" && (
-                    <Button size="sm" variant="ghost" onClick={() => handleRemoveStaff(member.id, member.name)} className="text-red-500 p-1.5">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
+      {/* TAB CONTENT 2: Taxes & Charges Module */}
+      {activeTab === "charges" && (
+        <TaxesAndChargesTab restaurantId={restaurantId} />
       )}
 
       {/* Add Staff Modal */}

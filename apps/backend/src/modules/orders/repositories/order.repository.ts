@@ -184,7 +184,8 @@ export class OrderRepository {
    */
   public async createOrder(
     orderData: Omit<Order, 'id' | 'createdAt' | 'updatedAt' | 'humanReadableId' | 'receiptSnapshot'>,
-    items: OrderItemSnapshot[]
+    items: OrderItemSnapshot[],
+    billingBreakdown?: any
   ): Promise<Order> {
     // 1. Fetch the maximum sequence number for this restaurant to generate the next human_readable_id
     const { data: maxRow, error: maxError } = await this.client
@@ -209,13 +210,15 @@ export class OrderRepository {
 
     const humanReadableId = `ORD-${nextSequence}`;
 
-    // Create a final receipt snapshot object to store immutably
+    // Create a complete immutable receipt snapshot object containing full billing breakdown
     const receiptSnapshot = {
+      billingEngineVersion: billingBreakdown?.billingEngineVersion || '1.0.0',
       restaurantId: orderData.restaurantId,
       customerPhone: orderData.customerPhone,
       humanReadableId,
       totalAmount: orderData.totalAmount,
       notes: orderData.notes || null,
+      billingBreakdown: billingBreakdown || null,
       items: items.map(item => ({
         name: item.itemNameSnapshot,
         variantName: item.variantNameSnapshot,

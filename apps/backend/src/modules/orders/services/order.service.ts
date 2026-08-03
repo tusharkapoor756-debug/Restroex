@@ -174,37 +174,54 @@ export class OrderService {
       throw new Error(`Cart validation failed: ${validation.errors.join(', ')}`);
     }
 
-    // 3. Fetch Settings for Billing
+    // 3. Fetch Settings & Charges for Billing Engine
     const settingsRepo = new SettingsRepository();
     const settings = await settingsRepo.getSettings(restaurantId);
 
-    // 4. Calculate Billing Breakdown
-    const billing = BillingService.calculateBreakdown(validation.validatedItems, settings);
+    const { ChargeRepository } = require('../../billing/repositories/charge.repository');
+    const chargeRepo = new ChargeRepository();
+    const charges = await chargeRepo.getCharges(restaurantId);
+
+    // 4. Calculate Pure Billing Breakdown via Centralized Billing Engine
+    const billing = BillingService.calculate({
+      items: validation.validatedItems.map((i) => ({
+        menuItemId: i.menuItemId,
+        name: i.itemNameSnapshot,
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+        totalPrice: i.totalPrice,
+      })),
+      charges,
+      discountAmount: 0,
+      orderType,
+      roundOffMode: (settings.settings as any).roundOffMode || 'nearest',
+    });
 
     // 4.5. Retrieve Customer Profile to bind customer_id
     const { CustomerService } = require('../../customers/services/customer.service');
     const customerService = new CustomerService();
     const customer = await customerService.getOrCreateCustomer(restaurantId, customerPhone);
 
-    const orderData: Omit<Order, 'id' | 'createdAt' | 'updatedAt' | 'humanReadableId' | 'receiptSnapshot'> = {
+    const orderData: Omit<Order, 'id' | 'createdAt' | 'updatedAt' | 'humanReadableId' | 'receiptSnapshot'> & { billingBreakdown?: any } = {
       restaurantId,
       customerPhone,
       status: 'checkout_pending',
-      subtotal: billing.subtotal,
-      tax: billing.taxAmount,
+      subtotal: billing.itemsSubtotal,
+      tax: billing.totalTaxAmount,
       discountAmount: billing.discountAmount,
       packingCharge: billing.packingCharge,
       deliveryCharge: billing.deliveryCharge,
-      totalAmount: billing.totalAmount,
+      totalAmount: billing.grandTotal,
       idempotencyKey: effectiveIdempotencyKey,
       customerId: customer.id,
       orderType,
       tableNumber: tableNumber ? Math.round(Number(tableNumber)) : null,
       notes: notes || null,
+      billingBreakdown: billing,
     };
 
-    // 5. Persist Order in database (including immutable snapshot items)
-    const createdOrder = await this.repository.createOrder(orderData, validation.validatedItems);
+    // 5. Persist Order in database (including immutable snapshot items & full billing breakdown)
+    const createdOrder = await this.repository.createOrder(orderData, validation.validatedItems, billing);
     logger.info({ orderId: createdOrder.id }, '✅ Order successfully generated and snapshotted.');
 
     // 6. Create Payment Record for this Order
