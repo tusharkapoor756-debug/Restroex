@@ -58,18 +58,21 @@ export class PdfGeneratorService {
       const contentHeightPx = await page.evaluate(() => {
         const doc = (globalThis as any).document;
         const el = doc.querySelector('.thermal-slip') || doc.querySelector('.thermal-receipt') || doc.body;
-        return Math.max(el.scrollHeight, el.clientHeight, doc.body.offsetHeight) + 16;
+        const rect = el.getBoundingClientRect();
+        return Math.ceil(Math.max(rect.height, el.scrollHeight, el.offsetHeight)) + 4;
       });
-      logger.info({ contentHeightPx }, '✅ [PUPPETEER DIAGNOSTIC 7] Step 7: page.evaluate() measured content height');
+      logger.info({ contentHeightPx }, '✅ [PUPPETEER DIAGNOSTIC 7] Step 7: Bounding box height measured');
 
       const widthString = paperWidthOption === '58mm' ? '58mm' : paperWidthOption === 'a4' ? '210mm' : '80mm';
-      const heightString = paperWidthOption === 'a4' ? '297mm' : `${Math.ceil(contentHeightPx)}px`;
+      const heightString = paperWidthOption === 'a4' ? '297mm' : `${contentHeightPx}px`;
 
-      logger.info({ widthString, heightString }, '🔍 [PUPPETEER DIAGNOSTIC 8] Step 8: Calling page.pdf()...');
+      logger.info({ widthString, heightString }, '🔍 [PUPPETEER DIAGNOSTIC 8] Step 8: Calling page.pdf() for infinite roll...');
       const pdfBuffer = await page.pdf({
         width: widthString,
         height: heightString,
         printBackground: true,
+        preferCSSPageSize: false,
+        pageRanges: '1',
         margin: { top: '0px', bottom: '0px', left: '0px', right: '0px' },
       });
       logger.info({ bufferSize: pdfBuffer.length }, '✅ [PUPPETEER DIAGNOSTIC 9] Step 9: page.pdf() generated buffer successfully');

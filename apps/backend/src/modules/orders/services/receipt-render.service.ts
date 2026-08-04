@@ -95,12 +95,12 @@ export class ReceiptRenderService {
       return `
         <div class="item-row">
           <div class="item-top">
-            <span class="col-item">${idx + 1}. ${this.escape(item.name)}</span>
+            <span class="item-desc">${idx + 1}. ${this.escape(item.name)}</span>
             <span class="col-qty">${item.quantity}</span>
             <span class="col-price">${this.formatMoney(item.unitPrice)}</span>
             <span class="col-total">${this.formatMoney(displayPrice)}</span>
           </div>
-          ${item.variantName ? `<div class="item-variant">+ ${this.escape(item.variantName)}</div>` : ''}
+          ${item.variantName ? `<div class="item-variant">• ${this.escape(item.variantName)}</div>` : ''}
         </div>
       `;
     }).join('');
@@ -377,48 +377,50 @@ ${input.body}
       :root { color-scheme: light; }
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body {
-        background: #f0f0f0;
+        background: #eef1f5;
         color: #000;
-        font-family: 'Courier New', Courier, monospace, sans-serif;
-        font-size: 12px;
-        line-height: 1.3;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 11px;
+        line-height: 1.35;
         display: flex;
         justify-content: center;
-        padding: 12px;
+        padding: 16px 8px;
+        -webkit-font-smoothing: antialiased;
       }
       .thermal-slip {
         width: 80mm;
         max-width: 100%;
-        background: #fff;
-        padding: 12px 10px;
+        background: #ffffff;
+        padding: 14px 12px;
         border: 0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
       }
-      .store-header { text-align: center; margin-bottom: 8px; }
-      .store-name { font-size: 16px; font-weight: bold; text-transform: uppercase; margin-bottom: 2px; }
-      .store-info { font-size: 11px; margin-top: 2px; }
+      .store-header { text-align: center; margin-bottom: 6px; }
+      .store-name { font-size: 16px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+      .store-info { font-size: 10px; color: #333; margin-top: 1px; }
       .dashed-divider { border-top: 1px dashed #000; margin: 6px 0; }
       .double-divider { border-top: 2px dashed #000; margin: 6px 0; }
-      .meta-block { font-size: 11px; margin: 4px 0; }
-      .row-flex { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
-      .row-flex span:first-child { color: #000; }
-      .row-flex strong { font-weight: bold; }
-      .table-hdr { display: flex; justify-content: space-between; font-weight: bold; border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 4px; font-size: 11px; }
-      .col-item { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-      .col-qty { width: 30px; text-align: center; }
-      .col-price { width: 65px; text-align: right; }
-      .col-total { width: 70px; text-align: right; }
+      .meta-block { font-size: 10.5px; margin: 4px 0; }
+      .row-flex { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 2.5px; }
+      .row-flex span:first-child { color: #222; }
+      .row-flex strong { font-weight: 700; color: #000; }
+      .table-hdr { display: flex; font-weight: 700; border-bottom: 1px dashed #000; padding-bottom: 3px; margin-bottom: 4px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.3px; }
+      .col-item { flex: 1; min-width: 0; text-align: left; }
+      .col-qty { width: 32px; text-align: center; }
+      .col-price { width: 62px; text-align: right; }
+      .col-total { width: 68px; text-align: right; }
       .item-row { margin-bottom: 4px; font-size: 11px; }
-      .item-top { display: flex; justify-content: space-between; align-items: flex-start; }
-      .item-desc { flex: 1; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
-      .item-variant { font-size: 10px; margin-left: 10px; }
-      .summary-block { font-size: 11px; margin-top: 4px; }
-      .grand-total { font-size: 14px; font-weight: bold; border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 6px 0; margin-top: 6px; }
-      .footer-note { text-align: center; margin-top: 10px; font-size: 10px; }
+      .item-top { display: flex; align-items: flex-start; }
+      .item-desc { flex: 1; min-width: 0; overflow-wrap: anywhere; word-break: break-word; font-weight: 600; padding-right: 4px; }
+      .item-variant { font-size: 10px; color: #444; margin-left: 12px; margin-top: 1px; }
+      .summary-block { font-size: 10.5px; margin-top: 4px; }
+      .grand-total { font-size: 13.5px; font-weight: 800; border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 5px 0; margin-top: 5px; text-transform: uppercase; }
+      .footer-note { text-align: center; margin-top: 8px; font-size: 9.5px; color: #333; }
       .actions { margin-top: 12px; }
-      button { width: 100%; padding: 8px; border: 1px solid #000; background: #fff; color: #000; font-family: inherit; font-weight: bold; cursor: pointer; }
+      button { width: 100%; padding: 8px; border: 1px solid #000; background: #000; color: #fff; font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer; border-radius: 2px; }
       @media print {
         body { background: #fff; padding: 0; }
-        .thermal-slip { width: 80mm; padding: 4px; }
+        .thermal-slip { width: 80mm; padding: 4px; box-shadow: none; }
         .actions { display: none; }
       }
     `;
