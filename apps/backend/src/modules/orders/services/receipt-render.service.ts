@@ -79,58 +79,156 @@ export class ReceiptRenderService {
     }
   }
 
-  public renderMobileReceipt(order: Order): string {
+  public renderMobileReceipt(order: Order, profile?: any): string {
     const snapshot = this.requireSnapshot(order);
-    const itemsRows = snapshot.items.map((item) => this.renderMobileItem(item)).join('');
+    const billing = (snapshot as any).billingBreakdown;
+    const invoiceNumber = (order as any).invoiceNumber || `INV-${this.escape(snapshot.humanReadableId)}`;
+    const storeName = profile?.name || 'TAX INVOICE';
+    const addressStr = [profile?.address, profile?.city, profile?.state, profile?.pincode].filter(Boolean).join(', ');
+    const gstStr = profile?.gstNumber ? `<div class="store-info">GSTIN: ${this.escape(profile.gstNumber)}</div>` : '';
+    const fssaiStr = profile?.fssaiNumber ? `<div class="store-info">FSSAI: ${this.escape(profile.fssaiNumber)}</div>` : '';
+    const phoneStr = profile?.phoneNumber ? `<div class="store-info">Phone: ${this.escape(profile.phoneNumber)}</div>` : '';
+
+    const itemsRows = snapshot.items.map((item, idx) => {
+      const itemBase = billing?.itemBases?.[idx]?.itemBasePrice;
+      const displayPrice = itemBase !== undefined ? itemBase : item.totalPrice;
+      return `
+        <div class="item-row">
+          <div class="item-top">
+            <span class="col-item">${idx + 1}. ${this.escape(item.name)}</span>
+            <span class="col-qty">${item.quantity}</span>
+            <span class="col-price">${this.formatMoney(item.unitPrice)}</span>
+            <span class="col-total">${this.formatMoney(displayPrice)}</span>
+          </div>
+          ${item.variantName ? `<div class="item-variant">+ ${this.escape(item.variantName)}</div>` : ''}
+        </div>
+      `;
+    }).join('');
+
     const generatedAt = this.formatDate(snapshot.generatedAt);
 
+    // Build pure breakdown rows
+    let breakdownHtml = '';
+    if (billing) {
+      // Calculate net base subtotal (subtracting inclusive taxes from gross if applicable)
+      let totalInclusiveTax = 0;
+      if (Array.isArray(billing.taxes)) {
+        for (const tax of billing.taxes) {
+          if (tax.pricingType === 'inclusive') {
+            totalInclusiveTax += Number(tax.calculatedAmount) || 0;
+          }
+        }
+      }
+      const itemsBaseSubtotal = Number((billing.netSubtotal - totalInclusiveTax).toFixed(2));
+
+      breakdownHtml += `
+        <div class="row-flex">
+          <span>Items Base Subtotal</span>
+          <strong>${this.formatMoney(itemsBaseSubtotal)}</strong>
+        </div>
+      `;
+
+      if (Array.isArray(billing.fees)) {
+        for (const fee of billing.fees) {
+          breakdownHtml += `
+            <div class="row-flex">
+              <span>${this.escape(fee.name)} (${fee.calculationType === 'percentage' ? fee.value + '%' : 'Fixed'})</span>
+              <strong>+${this.formatMoney(fee.calculatedAmount)}</strong>
+            </div>
+          `;
+        }
+      }
+
+      if (Array.isArray(billing.taxes)) {
+        for (const tax of billing.taxes) {
+          breakdownHtml += `
+            <div class="row-flex">
+              <span>${this.escape(tax.name)} (${tax.value}% ${this.escape(tax.pricingType.toUpperCase())})</span>
+              <strong>+${this.formatMoney(tax.calculatedAmount)}</strong>
+            </div>
+          `;
+        }
+      }
+
+      if (billing.roundOffAmount !== 0) {
+        breakdownHtml += `
+          <div class="row-flex">
+            <span>Round Off (${this.escape(billing.roundOffMode)})</span>
+            <strong>${billing.roundOffAmount > 0 ? '+' : ''}${this.formatMoney(billing.roundOffAmount)}</strong>
+          </div>
+        `;
+      }
+    } else {
+      breakdownHtml = `
+        <div class="row-flex">
+          <span>Subtotal</span>
+          <strong>${this.formatMoney(snapshot.totalAmount)}</strong>
+        </div>
+      `;
+    }
+
+    const { ReceiptFormatter } = require('./receipt-formatter.service');
+    const formatter = new ReceiptFormatter();
+    const contactPhoneRaw = (snapshot as any).customerContactPhone || order.customerContactPhone || snapshot.customerPhone || '';
+    const cleanPhone = formatter.sanitizePhone(contactPhoneRaw);
+
     return this.renderDocument({
-      title: `Receipt - ${snapshot.humanReadableId}`,
-      bodyClass: 'customer-page',
+      title: `Tax Invoice - ${invoiceNumber}`,
+      bodyClass: '',
       styles: this.customerStyles(),
       body: `
-        <main class="receipt-card" aria-label="Receipt ${this.escape(snapshot.humanReadableId)}">
-          <header class="receipt-header">
-            <p class="eyebrow">Receipt</p>
-            <h1>${this.escape(snapshot.humanReadableId)}</h1>
-            <p>${generatedAt}</p>
+        <main class="thermal-slip" aria-label="Tax Invoice ${this.escape(invoiceNumber)}">
+          <header class="store-header">
+            <div class="store-name">${this.escape(storeName.toUpperCase())}</div>
+            ${addressStr ? `<div class="store-info">${this.escape(addressStr)}</div>` : ''}
+            ${phoneStr}
+            ${gstStr}
+            ${fssaiStr}
           </header>
 
-          <section class="meta-grid" aria-label="Order details">
-            <div>
-              <span>Customer</span>
-              <strong>${this.maskPhone(snapshot.customerPhone)}</strong>
-            </div>
-            <div>
-              <span>Status</span>
-              <strong>${this.escape(order.status.toUpperCase())}</strong>
-            </div>
+          <div class="dashed-divider"></div>
+
+          <section class="meta-block">
+            <div class="row-flex"><span>Invoice No:</span><strong>${this.escape(invoiceNumber)}</strong></div>
+            <div class="row-flex"><span>Order ID:</span><strong>${this.escape(snapshot.humanReadableId)}</strong></div>
+            <div class="row-flex"><span>Date:</span><span>${generatedAt}</span></div>
+            <div class="row-flex"><span>Customer Name:</span><strong>${this.escape((snapshot as any).customerName || (order as any).customerName || 'Guest Customer')}</strong></div>
+            <div class="row-flex"><span>Mobile Number:</span><strong>${this.escape(cleanPhone)}</strong></div>
+            <div class="row-flex"><span>Pay Status:</span><strong>PAID (ONLINE)</strong></div>
           </section>
 
-          <div class="divider"></div>
+          <div class="dashed-divider"></div>
 
-          <section class="items" aria-label="Receipt items">
+          <section class="items-block">
+            <div class="table-hdr">
+              <span class="col-item">ITEM</span>
+              <span class="col-qty">QTY</span>
+              <span class="col-price">PRICE</span>
+              <span class="col-total">TOTAL</span>
+            </div>
             ${itemsRows}
           </section>
 
-          <div class="divider"></div>
+          <div class="dashed-divider"></div>
 
-          <section class="totals" aria-label="Receipt total">
-            <div class="total-row">
-              <span>Subtotal</span>
-              <strong>${this.formatMoney(snapshot.totalAmount)}</strong>
-            </div>
-            <div class="total-row grand-total">
-              <span>Grand total</span>
+          <section class="summary-block">
+            ${breakdownHtml}
+            <div class="row-flex grand-total">
+              <span>TOTAL PAYABLE</span>
               <strong>${this.formatMoney(snapshot.totalAmount)}</strong>
             </div>
           </section>
 
-          <section class="actions" aria-label="Receipt actions">
-            <button type="button" onclick="window.print()">Print or Save PDF</button>
-          </section>
+          <div class="double-divider"></div>
 
-          <p class="print-note">Use your browser print dialog to save this receipt as PDF.</p>
+          <footer class="footer-note">
+            <p>Thank you for dining with us!</p>
+            <p style="margin-top: 2px;">Powered by Restroex AI Restaurant Operating System</p>
+          </footer>
+
+          <div class="actions">
+            <button type="button" onclick="window.print()">Print Thermal Receipt</button>
+          </div>
         </main>
       `,
     });
@@ -277,40 +375,51 @@ ${input.body}
   private customerStyles(): string {
     return `
       :root { color-scheme: light; }
-      * { box-sizing: border-box; }
-      body { margin: 0; min-height: 100vh; background: #f4f6f8; color: #17202a; font-family: Arial, Helvetica, sans-serif; }
-      .customer-page { display: flex; justify-content: center; padding: 16px; }
-      .receipt-card { width: min(100%, 460px); background: #fff; border: 1px solid #dfe4ea; border-radius: 8px; padding: 20px; }
-      .receipt-header { text-align: center; }
-      .eyebrow { margin: 0 0 4px; color: #5f6b7a; font-size: 12px; text-transform: uppercase; }
-      h1 { margin: 0 0 6px; font-size: 26px; line-height: 1.15; }
-      p { margin: 0; color: #5f6b7a; }
-      .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
-      .meta-grid div { border: 1px solid #e5e9ef; border-radius: 6px; padding: 10px; min-width: 0; }
-      .meta-grid span { display: block; color: #6b7684; font-size: 12px; margin-bottom: 4px; }
-      .meta-grid strong, .item strong { overflow-wrap: anywhere; }
-      .divider { border-top: 1px dashed #aeb7c2; margin: 18px 0; }
-      .item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 10px 0; border-bottom: 1px solid #edf0f3; }
-      .item:last-child { border-bottom: 0; }
-      .item-main { min-width: 0; overflow-wrap: anywhere; }
-      .variant { display: block; color: #66717f; font-size: 13px; margin-top: 3px; overflow-wrap: anywhere; }
-      .item-price { text-align: right; white-space: nowrap; }
-      .item-price span { display: block; color: #66717f; font-size: 13px; margin-bottom: 4px; }
-      .total-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 8px 0; }
-      .grand-total { font-size: 20px; }
-      .actions { margin-top: 20px; }
-      button { width: 100%; min-height: 44px; border: 0; border-radius: 6px; background: #111827; color: #fff; font-weight: 700; cursor: pointer; }
-      .print-note { margin-top: 10px; text-align: center; font-size: 12px; }
-      @media (max-width: 360px) {
-        .receipt-card { padding: 14px; }
-        .meta-grid, .item { grid-template-columns: 1fr; }
-        .item-price { text-align: left; white-space: normal; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        background: #f0f0f0;
+        color: #000;
+        font-family: 'Courier New', Courier, monospace, sans-serif;
+        font-size: 12px;
+        line-height: 1.3;
+        display: flex;
+        justify-content: center;
+        padding: 12px;
       }
+      .thermal-slip {
+        width: 80mm;
+        max-width: 100%;
+        background: #fff;
+        padding: 12px 10px;
+        border: 0;
+      }
+      .store-header { text-align: center; margin-bottom: 8px; }
+      .store-name { font-size: 16px; font-weight: bold; text-transform: uppercase; margin-bottom: 2px; }
+      .store-info { font-size: 11px; margin-top: 2px; }
+      .dashed-divider { border-top: 1px dashed #000; margin: 6px 0; }
+      .double-divider { border-top: 2px dashed #000; margin: 6px 0; }
+      .meta-block { font-size: 11px; margin: 4px 0; }
+      .row-flex { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
+      .row-flex span:first-child { color: #000; }
+      .row-flex strong { font-weight: bold; }
+      .table-hdr { display: flex; justify-content: space-between; font-weight: bold; border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 4px; font-size: 11px; }
+      .col-item { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+      .col-qty { width: 30px; text-align: center; }
+      .col-price { width: 65px; text-align: right; }
+      .col-total { width: 70px; text-align: right; }
+      .item-row { margin-bottom: 4px; font-size: 11px; }
+      .item-top { display: flex; justify-content: space-between; align-items: flex-start; }
+      .item-desc { flex: 1; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+      .item-variant { font-size: 10px; margin-left: 10px; }
+      .summary-block { font-size: 11px; margin-top: 4px; }
+      .grand-total { font-size: 14px; font-weight: bold; border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 6px 0; margin-top: 6px; }
+      .footer-note { text-align: center; margin-top: 10px; font-size: 10px; }
+      .actions { margin-top: 12px; }
+      button { width: 100%; padding: 8px; border: 1px solid #000; background: #fff; color: #000; font-family: inherit; font-weight: bold; cursor: pointer; }
       @media print {
-        body { background: #fff; }
-        .customer-page { display: block; padding: 0; }
-        .receipt-card { width: 100%; max-width: none; border: 0; border-radius: 0; padding: 0; }
-        .actions, .print-note { display: none; }
+        body { background: #fff; padding: 0; }
+        .thermal-slip { width: 80mm; padding: 4px; }
+        .actions { display: none; }
       }
     `;
   }

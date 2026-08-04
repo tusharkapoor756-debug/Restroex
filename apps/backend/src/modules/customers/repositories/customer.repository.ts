@@ -43,6 +43,7 @@ export class CustomerRepository {
       .insert({
         restaurant_id: dto.restaurantId,
         phone: dto.phone,
+        contact_phone: dto.contactPhone || null,
         name: dto.name || null,
         address: dto.address || null,
       })
@@ -61,9 +62,15 @@ export class CustomerRepository {
   }
 
   public async update(id: string, dto: UpdateCustomerDto): Promise<Customer> {
+    const updatePayload: Record<string, any> = {};
+    if (dto.name !== undefined) updatePayload.name = dto.name;
+    if (dto.address !== undefined) updatePayload.address = dto.address;
+    if (dto.contactPhone !== undefined) updatePayload.contact_phone = dto.contactPhone;
+    updatePayload.updated_at = new Date().toISOString();
+
     const { data, error } = await this.client
       .from('customers')
-      .update(dto)
+      .update(updatePayload)
       .eq('id', id)
       .select('*')
       .single();
@@ -80,6 +87,7 @@ export class CustomerRepository {
       id: row.id,
       restaurantId: row.restaurant_id,
       phone: row.phone,
+      contactPhone: row.contact_phone || null,
       name: row.name,
       address: row.address,
       createdAt: row.created_at,

@@ -323,68 +323,85 @@ export class PaymentOrchestratorService {
       throw new Error(`Order persistence verification failed for orderId: ${payment.orderId}`);
     }
 
-    // 3. Notify Restaurant Kitchen Workflow
-    try {
-      logger.info({ restaurantId: payment.restaurantId, orderId: payment.orderId, itemsCount: persistedOrder.items?.length }, '📢 Kitchen notified of new paid order with persisted snapshot.');
-    } catch (err) {
-      logger.warn({ err }, 'Failed to notify kitchen');
-    }
+    // 3. NON-BLOCKING PARALLEL EXECUTION ARCHITECTURE:
+    // Kitchen Notifications and FSM Session Reset happen immediately without waiting for PDF or messaging latency.
+    Promise.allSettled([
+      // Task A: Notify Kitchen KDS (Zero Delay)
+      (async () => {
+        logger.info(
+          { restaurantId: payment.restaurantId, orderId: payment.orderId, itemsCount: persistedOrder.items?.length },
+          '📢 Kitchen notified of new paid order.'
+        );
+      })(),
 
-    // 4. Safe Session Reset: Clear cart ONLY after order persistence is 100% verified
-    try {
-      const { SessionService } = require('../../conversations/session.service');
-      const sessionService = new SessionService();
-      await sessionService.executeSessionAction(
-        payment.restaurantId,
-        payment.customerPhone,
-        async () => ({ event: { name: 'RESET' } })
-      );
-    } catch (err) {
-      logger.warn({ err }, 'Failed to reset customer session after payment success');
-    }
+      // Task B: Safe FSM Session Reset
+      (async () => {
+        const { SessionService } = require('../../conversations/session.service');
+        const sessionService = new SessionService();
+        await sessionService.executeSessionAction(
+          payment.restaurantId,
+          payment.customerPhone,
+          async () => ({ event: { name: 'RESET' } })
+        );
+      })(),
 
-    // 4. Send Rich Interactive Payment Confirmation Card via WhatsApp
-    // 4. Send Clean WhatsApp Payment Confirmation Message (Idempotent via Redis Lock)
-    try {
-      const { redis } = require('../../../infrastructure/redis/redis.client');
-      const dedupKey = `payment:confirmed:${payment.id}`;
-      const isFirst = await redis.getClient().set(dedupKey, 'true', 'EX', 300, 'NX');
-      if (!isFirst) {
-        logger.info({ paymentId: payment.id }, 'Duplicate payment confirmation message suppressed by Redis lock.');
-        return;
-      }
+      // Task C: Dedicated Invoice Service & WhatsApp Delivery Engine
+      (async () => {
+        const { redis } = require('../../../infrastructure/redis/redis.client');
+        const dedupKey = `payment:confirmed:${payment.id}`;
+        const isFirst = await redis.getClient().set(dedupKey, 'true', 'EX', 300, 'NX');
+        if (!isFirst) {
+          logger.info({ paymentId: payment.id }, 'Duplicate payment confirmation message suppressed by Redis lock.');
+          return;
+        }
 
-      const { WhatsAppMessageService } = require('../../whatsapp/message.service');
-      const { OrderService } = require('../../orders/services/order.service');
+        const { invoiceService } = require('../../orders/services/invoice.service');
+        const { WhatsAppMessageService } = require('../../whatsapp/message.service');
+        const messages = new WhatsAppMessageService();
 
-      const messages = new WhatsAppMessageService();
-      const orderService = new OrderService();
-      const realOrder = await orderService['repository'].findById(payment.orderId).catch(() => null);
+        try {
+          const invoiceResult = await invoiceService.generateInvoice(persistedOrder);
 
-      const displayOrderId = realOrder?.humanReadableId
-        ? (realOrder.humanReadableId.startsWith('#') ? realOrder.humanReadableId : `#${realOrder.humanReadableId}`)
-        : `#ORD-${payment.orderId.slice(0, 4).toUpperCase()}`;
+          const paidAmount = payment.verifiedAmount || payment.amount || persistedOrder.totalAmount || 0;
+          const displayOrderId = persistedOrder.humanReadableId || payment.orderId;
 
-      const paidAmount = payment.verifiedAmount || payment.amount || realOrder?.totalAmount || 0;
+          const messageText = [
+            `✅ *Payment Received Successfully!*`,
+            `━━━━━━━━━━━━━━━━━━━━`,
+            `Restaurant : *Restroex Outlet*`,
+            `Order ID   : *${displayOrderId}*`,
+            `Invoice    : *${invoiceResult.invoiceNumber}*`,
+            `Amount Paid: *₹${paidAmount.toFixed(2)}*`,
+            `Status     : *PAID ✓*`,
+            ``,
+            `📄 *Tax Invoice Link:*`,
+            `${invoiceResult.signedUrl}`,
+            ``,
+            `🍳 We have started preparing your order. Live updates will appear here!`,
+          ].join('\n');
 
-      const messageText = [
-        `✅ *Payment Confirmed!*`,
-        `━━━━━━━━━━━━━━`,
-        `Order ID : *${displayOrderId}*`,
-        `Amount   : *₹${paidAmount}*`,
-        ``,
-        `🍳 Restaurant is preparing your order. Live updates will appear here!`,
-      ].join('\n');
-
-      await messages.sendText(
-        payment.restaurantId,
-        payment.customerPhone,
-        messageText
-      );
-      logger.info({ paymentId: payment.id, customerPhone: payment.customerPhone }, 'Payment confirmation notification sent to customer.');
-    } catch (err) {
-      logger.warn({ err }, 'Failed to send WhatsApp confirmation');
-    }
+          // Attempt PDF Document Attachment (pointing strictly to binary PDF stream URL)
+          try {
+            await messages.sendDocument(
+              payment.restaurantId,
+              payment.customerPhone,
+              invoiceResult.pdfUrl,
+              `Tax_Invoice_${invoiceResult.invoiceNumber}.pdf`,
+              messageText
+            );
+          } catch (docErr) {
+            // Fall back to text message if document delivery fails on specific provider
+            await messages.sendText(payment.restaurantId, payment.customerPhone, messageText);
+          }
+          logger.info({ paymentId: payment.id, invoiceNumber: invoiceResult.invoiceNumber }, 'Tax Invoice notification sent to customer.');
+        } catch (invoiceErr: any) {
+          logger.error({ error: invoiceErr.message, orderId: payment.orderId }, '⚠️ Invoice Generation failed non-blockingly. Order remains PAID.');
+          // Fallback confirmation message
+          const fallbackText = `✅ *Payment Received Successfully!*\n\nOrder ID: *${persistedOrder.humanReadableId || payment.orderId}*\nAmount Paid: *₹${(payment.verifiedAmount || payment.amount || 0).toFixed(2)}*\n\nYour order is being prepared!`;
+          await messages.sendText(payment.restaurantId, payment.customerPhone, fallbackText).catch(() => {});
+        }
+      })(),
+    ]);
   }
 
   private async handlePaymentFailed(payment: Payment): Promise<void> {

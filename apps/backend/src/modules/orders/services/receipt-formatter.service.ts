@@ -1,59 +1,58 @@
-import { Order } from '../types/order.types';
+export interface FormatOptions {
+  locale?: string;
+  currency?: string;
+}
 
-export class ReceiptFormatterService {
-  /**
-   * Generates a clean, highly readable text receipt for WhatsApp notifications.
-   * Leverages the immutable database snapshots to guarantee old receipts never drift.
-   */
-  public formatReceipt(order: Order, paymentReference?: string): string {
-    const snapshot = order.receiptSnapshot;
-    if (!snapshot) {
-      return this.formatLegacyReceipt(order);
-    }
+export class ReceiptFormatter {
+  private locale: string;
+  private currency: string;
+  private currencyFormatter: Intl.NumberFormat;
 
-    const dateStr = new Date(snapshot.generatedAt || order.createdAt).toLocaleString('en-IN', {
-      timeZone: 'Asia/Kolkata',
+  constructor(options: FormatOptions = {}) {
+    this.locale = options.locale || 'en-IN';
+    this.currency = options.currency || 'INR';
+
+    this.currencyFormatter = new Intl.NumberFormat(this.locale, {
+      style: 'currency',
+      currency: this.currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     });
-
-    let receipt = `🧾 *BILL RECEIPT - RESTROEX*\n`;
-    receipt += `--------------------------------\n`;
-    receipt += `*Order ID:* ${snapshot.humanReadableId}\n`;
-    receipt += `*Phone:* ${snapshot.customerPhone}\n`;
-    receipt += `*Date:* ${dateStr}\n`;
-    receipt += `--------------------------------\n\n`;
-
-    snapshot.items.forEach((item: any, index: number) => {
-      const variantStr = item.variantName ? ` (${item.variantName})` : '';
-      receipt += `*${index + 1}. ${item.name}${variantStr}*\n`;
-      receipt += `   ${item.quantity} x ₹${Number(item.unitPrice).toFixed(2)} = ₹${Number(item.totalPrice).toFixed(2)}\n`;
-    });
-
-    receipt += `\n--------------------------------\n`;
-    receipt += `*Subtotal:* ₹${Number(snapshot.totalAmount).toFixed(2)}\n`;
-    receipt += `*CGST/SGST (0%):* ₹0.00\n`;
-    receipt += `*Grand Total: ₹${Number(snapshot.totalAmount).toFixed(2)}*\n`;
-    receipt += `--------------------------------\n`;
-    
-    const paymentStatusStr = order.status === 'paid' ? 'PAID ✅' : order.status.toUpperCase();
-    receipt += `*Payment Status:* ${paymentStatusStr}\n`;
-    
-    if (paymentReference) {
-      receipt += `*Ref ID:* ${paymentReference}\n`;
-    }
-    
-    receipt += `\nThank you for ordering with us! 🙏`;
-
-    return receipt;
   }
 
-  /**
-   * Fallback formatter when order is missing receipt snapshot details (legacy compatibility)
-   */
-  private formatLegacyReceipt(order: Order): string {
-    let receipt = `🧾 *ORDER SNAPSHOT - ORD*\n`;
-    receipt += `*Order Ref:* ${order.humanReadableId}\n`;
-    receipt += `*Grand Total: ₹${order.totalAmount.toFixed(2)}*\n`;
-    receipt += `*Status:* ${order.status.toUpperCase()}\n`;
-    return receipt;
+  public formatMoney(amount: number): string {
+    return this.currencyFormatter.format(amount || 0);
+  }
+
+  public formatDate(dateString: string): string {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat(this.locale, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(date);
+  }
+
+  public sanitizePhone(phone: string): string {
+    if (!phone) return '';
+    // Strip WhatsApp internal LID tokens (e.g. 82073285091419@lid -> +91 XXXXX XXXXX or clean number)
+    const cleaned = phone.replace(/@.*$/, '').trim();
+    if (cleaned.length === 10 && /^\d+$/.test(cleaned)) {
+      return `+91 ${cleaned.slice(0, 5)} ${cleaned.slice(5)}`;
+    }
+    if (cleaned.length === 12 && cleaned.startsWith('91')) {
+      return `+91 ${cleaned.slice(2, 7)} ${cleaned.slice(7)}`;
+    }
+    return cleaned;
+  }
+
+  public escapeHtml(str: string): string {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 }

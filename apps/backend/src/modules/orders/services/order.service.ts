@@ -142,7 +142,9 @@ export class OrderService {
     idempotencyKey: string,
     orderType: 'takeaway' | 'dining' = 'takeaway',
     tableNumber?: number | null,
-    notes?: string | null
+    notes?: string | null,
+    customerName?: string | null,
+    customerContactPhone?: string | null
   ): Promise<{ order: Order; payment: any; paymentContext?: any }> {
     // 1. Active Idempotency Check — return existing order ONLY if it is still active (non-terminal)
     const existingActiveOrder = await this.repository.findActiveByIdempotencyKey(idempotencyKey);
@@ -197,14 +199,21 @@ export class OrderService {
       roundOffMode: (settings.settings as any).roundOffMode || 'nearest',
     });
 
-    // 4.5. Retrieve Customer Profile to bind customer_id
+    // 4.5. Retrieve Customer Profile & Update profile fields (Without touching primary WhatsApp phone)
     const { CustomerService } = require('../../customers/services/customer.service');
     const customerService = new CustomerService();
-    const customer = await customerService.getOrCreateCustomer(restaurantId, customerPhone);
+    let customer = await customerService.getOrCreateCustomer(restaurantId, customerPhone);
+
+    if (customerName || customerContactPhone) {
+      customer = await customerService.updateCustomerProfile(customer.id, {
+        name: customerName || undefined,
+        contactPhone: customerContactPhone || undefined,
+      }).catch(() => customer);
+    }
 
     const orderData: Omit<Order, 'id' | 'createdAt' | 'updatedAt' | 'humanReadableId' | 'receiptSnapshot'> & { billingBreakdown?: any } = {
       restaurantId,
-      customerPhone,
+      customerPhone, // Primary WhatsApp LID / Phone (UNTOUCHED)
       status: 'checkout_pending',
       subtotal: billing.itemsSubtotal,
       tax: billing.totalTaxAmount,
@@ -214,6 +223,8 @@ export class OrderService {
       totalAmount: billing.grandTotal,
       idempotencyKey: effectiveIdempotencyKey,
       customerId: customer.id,
+      customerName: customerName || customer.name || null,
+      customerContactPhone: customerContactPhone || customer.contactPhone || null,
       orderType,
       tableNumber: tableNumber ? Math.round(Number(tableNumber)) : null,
       notes: notes || null,

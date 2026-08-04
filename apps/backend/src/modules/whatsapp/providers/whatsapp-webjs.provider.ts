@@ -110,7 +110,11 @@ export class WhatsAppWebJsProvider implements WhatsAppProvider {
     session.lastSendAt = Date.now();
     const targetChatId = await this.resolveChatId(session, payload.to);
 
-    if (payload.mediaUrl) {
+    if (payload.documentUrl) {
+      const { MessageMedia } = await this.loadWebJs();
+      const media = await MessageMedia.fromUrl(payload.documentUrl, { unsafeMime: true, filename: payload.fileName || 'document.pdf' });
+      await session.client.sendMessage(targetChatId, media, { caption: payload.body });
+    } else if (payload.mediaUrl) {
       const { MessageMedia } = await this.loadWebJs();
       const media = await MessageMedia.fromUrl(payload.mediaUrl, { unsafeMime: true });
       await session.client.sendMessage(targetChatId, media, { caption: payload.body });

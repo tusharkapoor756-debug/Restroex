@@ -133,6 +133,18 @@ export class WhatsAppCloudApiProvider implements WhatsAppProvider {
         type: 'template',
         template,
       };
+    } else if (payload.documentUrl) {
+      messageBody = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: formattedTo,
+        type: 'document',
+        document: {
+          link: payload.documentUrl,
+          filename: payload.fileName || 'document.pdf',
+          caption: body || undefined,
+        },
+      };
     } else if (mediaUrl) {
       messageBody = {
         messaging_product: 'whatsapp',

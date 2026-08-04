@@ -19,6 +19,8 @@ export interface SendMessagePayload {
   to: string;
   body: string;
   mediaUrl?: string;
+  documentUrl?: string;
+  fileName?: string;
   interactive?: {
     type: 'button' | 'list';
     header?: string;

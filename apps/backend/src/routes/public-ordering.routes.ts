@@ -46,8 +46,10 @@ router.post(
     // Frontend sends `orderMode`; backend OrderService uses `orderType`.
     const {
       restaurantSlug,
-      customerPhone,
+      customerPhone,       // Primary WhatsApp LID / Phone
       customerName,
+      contactPhone,        // Preferred customer contact phone from checkout form
+      customerContactPhone, // Alternative field name
       orderMode,   // frontend field name
       orderType,   // legacy field name (kept for backward compat)
       tableNumber,
@@ -58,6 +60,7 @@ router.post(
     } = req.body;
 
     const resolvedNotes = notes || instructions || null;
+    const resolvedContactPhone = contactPhone || customerContactPhone || null;
 
     const resolvedOrderType: 'takeaway' | 'dining' =
       (orderMode ?? orderType ?? 'takeaway') === 'dining' ? 'dining' : 'takeaway';
@@ -96,23 +99,27 @@ router.post(
       idempotencyKey,
       resolvedOrderType,
       tableNumber ? Number(tableNumber) : undefined,
-      resolvedNotes
+      resolvedNotes,
+      customerName ? customerName.trim() : null,
+      resolvedContactPhone ? resolvedContactPhone.trim() : null
     );
 
-    // 4b. Update customer name in DB if provided by web checkout form.
-    // This ensures the Kanban board shows real customer name instead of 'WhatsApp Customer'.
-    if (customerName && customerName.trim()) {
+    // 4b. Update customer profile in DB if name or contact phone provided by web checkout form.
+    if ((customerName && customerName.trim()) || (resolvedContactPhone && resolvedContactPhone.trim())) {
       try {
         const { CustomerService } = require('../modules/customers/services/customer.service');
         const customerSvc = new CustomerService();
         const existingCustomer = await customerSvc.findByPhone(restaurantId, customerPhone);
         if (existingCustomer) {
-          await customerSvc.updateCustomerProfile(existingCustomer.id, { name: customerName.trim() });
+          await customerSvc.updateCustomerProfile(existingCustomer.id, {
+            name: customerName ? customerName.trim() : undefined,
+            contactPhone: resolvedContactPhone ? resolvedContactPhone.trim() : undefined,
+          });
         }
       } catch (nameUpdateErr) {
         // Non-fatal: log but don't fail the order placement
         const { logger } = require('../infrastructure/logger/logger');
-        logger.warn({ nameUpdateErr, customerPhone }, 'Could not update customer name from web checkout');
+        logger.warn({ nameUpdateErr, customerPhone }, 'Could not update customer profile from web checkout');
       }
     }
     // 5. Generate Payment Link if Razorpay or online provider selected

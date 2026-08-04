@@ -18,6 +18,12 @@ export class WhatsAppMessageService {
     await provider.sendMessage({ restaurantId, to, body: caption || '', mediaUrl });
   }
 
+  public async sendDocument(restaurantId: string, to: string, documentUrl: string, fileName?: string, caption?: string) {
+    logger.info({ restaurantId, to, documentUrl, fileName }, 'WhatsAppMessageService.sendDocument entry');
+    const provider = await whatsappProviderFactory.getProviderForRestaurant(restaurantId);
+    await provider.sendMessage({ restaurantId, to, body: caption || '', documentUrl, fileName });
+  }
+
   public async sendTemplate(restaurantId: string, to: string, templateName: string, components: any[]) {
     const provider = await whatsappProviderFactory.getProviderForRestaurant(restaurantId);
     if (provider.providerType === 'cloud_api') {

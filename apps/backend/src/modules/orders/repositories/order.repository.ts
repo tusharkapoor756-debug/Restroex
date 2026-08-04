@@ -214,7 +214,9 @@ export class OrderRepository {
     const receiptSnapshot = {
       billingEngineVersion: billingBreakdown?.billingEngineVersion || '1.0.0',
       restaurantId: orderData.restaurantId,
-      customerPhone: orderData.customerPhone,
+      customerPhone: orderData.customerPhone, // Primary WhatsApp LID / Communication Identifier
+      customerName: orderData.customerName || null,
+      customerContactPhone: orderData.customerContactPhone || null,
       humanReadableId,
       totalAmount: orderData.totalAmount,
       notes: orderData.notes || null,
@@ -235,6 +237,8 @@ export class OrderRepository {
       .insert({
         restaurant_id: orderData.restaurantId,
         customer_phone: orderData.customerPhone,
+        customer_name: orderData.customerName || null,
+        customer_contact_phone: orderData.customerContactPhone || null,
         status: orderData.status,
         total_amount: orderData.totalAmount,
         subtotal: orderData.subtotal,
@@ -396,8 +400,9 @@ export class OrderRepository {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       customerId: row.customer_id,
-      customerName: row.customer?.name || row.customer_name || null,
-      customerAddress: row.customer?.address || row.customer_address || null,
+      customerName: row.customer_name || row.receipt_snapshot?.customerName || row.customer?.name || null,
+      customerContactPhone: row.customer_contact_phone || row.receipt_snapshot?.customerContactPhone || row.customer?.contact_phone || null,
+      customerAddress: row.customer_address || row.customer?.address || null,
       items,
       payment,
     };

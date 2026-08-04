@@ -68,6 +68,7 @@ export interface Order {
   notes?: string | null;
   customerId?: string | null;
   customerName?: string | null;
+  customerContactPhone?: string | null;
   customerAddress?: string | null;
   payment?: any;
 }
