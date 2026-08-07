@@ -55,4 +55,19 @@ export class ReceiptFormatter {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
   }
+
+  public formatReceipt(order: any, paymentRefId?: string): string {
+    let out = `*Order ID:* ${order.humanReadableId}\n`;
+    if (order.receiptSnapshot && order.receiptSnapshot.items) {
+      for (const item of order.receiptSnapshot.items) {
+        out += `- ${item.name}${item.variantName ? ` (${item.variantName})` : ''} x${item.quantity}\n`;
+      }
+    }
+    out += `Grand Total: ${this.formatMoney(order.totalAmount)}\n`;
+    if (paymentRefId) {
+      out += `*Ref ID:* ${paymentRefId}\n`;
+    }
+    return out;
+  }
 }
+

@@ -24,6 +24,20 @@ export class OrderOperationsController {
     });
   };
 
+  public getOrderById = async (req: Request, res: Response): Promise<void> => {
+    const restaurantId = this.getRestaurantId(req);
+    const orderId = String(req.params.orderId || '');
+    if (!orderId) throw new BadRequestError('orderId is required');
+
+    const order = await this.orders.findById(orderId);
+    if (!order) throw new NotFoundError('Order not found');
+
+    // Ensure the order belongs to this restaurant (prevents cross-tenant access)
+    if (order.restaurantId !== restaurantId) throw new NotFoundError('Order not found');
+
+    res.status(200).json({ success: true, data: order });
+  };
+
   public getOrderHistory = async (req: Request, res: Response): Promise<void> => {
     const restaurantId = this.getRestaurantId(req);
     const page = req.query.page ? parseInt(String(req.query.page), 10) : 1;
@@ -58,6 +72,9 @@ export class OrderOperationsController {
     const orderId = String(req.params.orderId || '');
     const restaurantId = this.getRestaurantId(req);
     const targetStatus = req.body?.status as OrderStatus | undefined;
+    const cancellationReason = req.body?.cancellationReason
+      ? String(req.body.cancellationReason).trim().slice(0, 255)
+      : undefined;
 
     if (!targetStatus || !WORKFLOW_STATUSES.includes(targetStatus)) {
       throw new BadRequestError('Unsupported order status transition');
@@ -67,12 +84,13 @@ export class OrderOperationsController {
     if (!existingOrder) throw new NotFoundError('Order not found');
     if (existingOrder.restaurantId !== restaurantId) throw new NotFoundError('Order not found');
 
-    const updatedOrder = await this.orderService.transitionOrder(orderId, targetStatus);
+    const updatedOrder = await this.orderService.transitionOrder(orderId, targetStatus, cancellationReason);
     res.status(200).json({
       success: true,
       data: updatedOrder,
     });
   };
+
 
   private getRestaurantId(req: Request): string {
     return String((req as any).restaurantId || '');

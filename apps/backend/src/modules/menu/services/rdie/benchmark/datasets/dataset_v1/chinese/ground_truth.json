@@ -1,0 +1,42 @@
+{
+  "categories": [
+    {
+      "name": "STARTERS"
+    },
+    {
+      "name": "NOODLES AND RICE"
+    }
+  ],
+  "items": [
+    {
+      "name": "Veg Spring Roll",
+      "category": "STARTERS",
+      "basePrice": 160,
+      "variants": []
+    },
+    {
+      "name": "Chilli Chicken Dry",
+      "category": "STARTERS",
+      "basePrice": 280,
+      "variants": []
+    },
+    {
+      "name": "Honey Chilli Potato",
+      "category": "STARTERS",
+      "basePrice": 180,
+      "variants": []
+    },
+    {
+      "name": "Hakka Noodles",
+      "category": "NOODLES AND RICE",
+      "basePrice": 190,
+      "variants": []
+    },
+    {
+      "name": "Schezwan Fried Rice",
+      "category": "NOODLES AND RICE",
+      "basePrice": 210,
+      "variants": []
+    }
+  ]
+}

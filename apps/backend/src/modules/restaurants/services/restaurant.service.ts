@@ -44,9 +44,27 @@ export class RestaurantService {
   }
 
   private async loadRestaurant(restaurantId: string): Promise<Restaurant> {
-    const restaurant = await this.restaurants.findById(restaurantId);
+    let restaurant = await this.restaurants.findById(restaurantId);
     if (!restaurant) {
       throw new NotFoundError('Restaurant not found');
+    }
+
+    // Auto-heal missing email on legacy restaurant records from the linked owner user account
+    if (!restaurant.email) {
+      try {
+        const { data: user } = await (this.restaurants as any).client
+          .from('users')
+          .select('email')
+          .eq('restaurant_id', restaurantId)
+          .limit(1)
+          .maybeSingle();
+
+        if (user?.email) {
+          restaurant = await this.restaurants.updateSetup(restaurantId, { email: user.email });
+        }
+      } catch {
+        // Fallback gracefully if query fails
+      }
     }
 
     return restaurant;

@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { RestaurantService } from "../../lib/services/restaurant.service";
 import { getToken, clearSession } from "../../lib/auth";
+import { FEATURE_FLAGS } from "../../lib/feature-flags";
 
 type Step = "welcome" | "info" | "profile" | "whatsapp" | "menu" | "finish";
 
@@ -182,8 +183,8 @@ export default function OnboardingPage() {
   };
 
   const handleCompleteSetup = async () => {
+    setError(null);
     try {
-      // The complete setup endpoint needs all these fields
       const updateData = {
         name: restaurantName,
         phoneNumber: phone,
@@ -193,12 +194,16 @@ export default function OnboardingPage() {
         pincode,
       };
 
-      await RestaurantService.completeSetup(updateData);
-    } catch {
-      // Best-effort — still redirect to dashboard
+      const res = await RestaurantService.completeSetup(updateData);
+      if (res && (res.isComplete || res.restaurant)) {
+        router.replace("/dashboard");
+      } else {
+        router.replace("/dashboard");
+      }
+    } catch (err: any) {
+      console.error("[Onboarding] Setup completion error:", err);
+      setError(err?.message || "Failed to complete setup. Please check all fields.");
     }
-
-    router.push("/dashboard");
   };
 
   // Show a full-screen spinner while we resolve session state from the DB
@@ -259,17 +264,35 @@ export default function OnboardingPage() {
       </div>
 
       {/* Main Form Work Area */}
-      <div className="w-full flex-1 flex flex-col min-h-screen relative p-6 sm:p-12 md:p-16 justify-between">
+      <div className="w-full flex-1 flex flex-col min-h-screen relative p-4 sm:p-8 md:p-16 justify-between">
         <div className="absolute -bottom-1/4 right-0 h-96 w-96 rounded-full bg-indigo-600/5 blur-[120px] pointer-events-none" />
 
-        {/* Top Header for Mobile only */}
-        <div className="md:hidden flex items-center justify-between pb-6 border-b border-[#23242B]/30 mb-6">
-          <div className="flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded bg-violet-600 text-xs font-bold text-white">R</span>
-            <span className="text-sm font-bold text-white font-sora">Restroex</span>
+        {/* Mobile Top Header + Step Progress */}
+        <div className="md:hidden flex flex-col gap-3 pb-5 border-b border-[#23242B]/30 mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded bg-violet-600 text-xs font-bold text-white">R</span>
+              <span className="text-sm font-bold text-white font-sora">Restroex Setup</span>
+            </div>
+            <span className="text-xs text-slate-500">Step {currentStepIndex + 1} / {steps.length}</span>
           </div>
-          <span className="text-xs text-slate-500">
-            Step {currentStepIndex + 1} of {steps.length}
+          {/* Step progress dots */}
+          <div className="flex items-center gap-1.5">
+            {steps.map((step, idx) => (
+              <div
+                key={step.id}
+                className={`h-1.5 rounded-full flex-1 transition-all duration-300 ${
+                  idx < currentStepIndex
+                    ? "bg-violet-500"
+                    : idx === currentStepIndex
+                    ? "bg-violet-400"
+                    : "bg-slate-700"
+                }`}
+              />
+            ))}
+          </div>
+          <span className="text-xs font-semibold text-violet-400">
+            {steps[currentStepIndex]?.label}
           </span>
         </div>
 
@@ -528,154 +551,185 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* STEP 5: MENU IMPORT */}
+          {/* STEP 5: MENU SETUP */}
           {currentStep === "menu" && (
             <div className="space-y-6">
               <div className="space-y-2">
-                <h2 className="text-2xl font-bold font-sora text-white">Import Menu</h2>
-                <p className="text-sm text-slate-400">Add dishes, prices, and descriptions to Restroex.</p>
+                <h2 className="text-2xl font-bold font-sora text-white">Menu Setup</h2>
+                <p className="text-sm text-slate-400">Your restaurant menu configuration.</p>
               </div>
 
-              {!importMethod ? (
-                <div className="space-y-3">
-                  <button
-                    onClick={() => setImportMethod("upload")}
-                    className="w-full flex items-center justify-between p-4 rounded-xl bg-slate-900/30 border border-[#23242B] hover:border-slate-800 text-left transition-all group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-violet-950 text-violet-400">
-                        <Upload className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-semibold text-slate-200">Upload PDF / Image</h3>
-                        <p className="text-xs text-slate-500 mt-0.5">Let Restroex AI parse your existing physical menu</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="h-5 w-5 text-slate-600 group-hover:text-slate-400 transition-colors" />
-                  </button>
-
-                  <button
-                    onClick={() => setImportMethod("link")}
-                    className="w-full flex items-center justify-between p-4 rounded-xl bg-slate-900/30 border border-[#23242B] hover:border-slate-800 text-left transition-all group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-violet-950 text-violet-400">
-                        <Globe className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-semibold text-slate-200">Import from aggregator</h3>
-                        <p className="text-xs text-slate-500 mt-0.5">Sync categories & prices from Zomato / Swiggy link</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="h-5 w-5 text-slate-600 group-hover:text-slate-400 transition-colors" />
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setImportMethod("manual");
-                      setMenuUploaded(true); // Treat as configure complete
-                    }}
-                    className="w-full flex items-center justify-between p-4 rounded-xl bg-slate-900/30 border border-[#23242B] hover:border-slate-800 text-left transition-all group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-slate-950 text-slate-400">
-                        <FileText className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-semibold text-slate-200">Configure manually</h3>
-                        <p className="text-xs text-slate-500 mt-0.5">Input categories, dishes, and variants directly</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="h-5 w-5 text-slate-600 group-hover:text-slate-400 transition-colors" />
-                  </button>
-                </div>
-              ) : (
-                <div className="p-6 rounded-2xl bg-slate-900/20 border border-[#23242B] space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-white capitalize">Method: {importMethod}</h3>
-                    <button
-                      onClick={() => {
-                        setImportMethod(null);
-                        setMenuUploaded(false);
-                        setMenuFile(null);
-                      }}
-                      className="text-xs font-semibold text-violet-400 hover:text-violet-300"
-                    >
-                      Change Method
-                    </button>
-                  </div>
-
-                  {importMethod === "upload" && (
-                    <div className="space-y-4">
-                      {menuUploaded ? (
-                        <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-950/20 border border-emerald-900/40 text-emerald-200 text-sm">
-                          <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
-                          <span>File parsed successfully! {menuFileName}</span>
+              {FEATURE_FLAGS.MENU_IMPORT ? (
+                // ── Full import workflow (re-enabled post-launch) ──────────────
+                <>{
+                  !importMethod ? (
+                    <div className="space-y-3">
+                      <button
+                        onClick={() => setImportMethod("upload")}
+                        className="w-full flex items-center justify-between p-4 rounded-xl bg-slate-900/30 border border-[#23242B] hover:border-slate-800 text-left transition-all group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-violet-950 text-violet-400">
+                            <Upload className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-semibold text-slate-200">Upload PDF / Image</h3>
+                            <p className="text-xs text-slate-500 mt-0.5">Let Restroex AI parse your existing physical menu</p>
+                          </div>
                         </div>
-                      ) : (
-                        <div className="border border-dashed border-slate-800 rounded-xl p-8 text-center space-y-3 relative hover:border-slate-700 transition-colors">
-                          <input
-                            type="file"
-                            accept=".pdf,.png,.jpg,.jpeg"
-                            onChange={handleMenuUpload}
-                            disabled={isUploadingMenu}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                          />
-                          {isUploadingMenu ? (
-                            <div className="space-y-2">
-                              <Loader2 className="h-8 w-8 animate-spin text-violet-500 mx-auto" />
-                              <p className="text-xs text-slate-400">AI parsing menu layouts...</p>
+                        <ChevronRight className="h-5 w-5 text-slate-600 group-hover:text-slate-400 transition-colors" />
+                      </button>
+
+                      <button
+                        onClick={() => setImportMethod("link")}
+                        className="w-full flex items-center justify-between p-4 rounded-xl bg-slate-900/30 border border-[#23242B] hover:border-slate-800 text-left transition-all group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-violet-950 text-violet-400">
+                            <Globe className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-semibold text-slate-200">Import from aggregator</h3>
+                            <p className="text-xs text-slate-500 mt-0.5">Sync categories & prices from Zomato / Swiggy link</p>
+                          </div>
+                        </div>
+                        <ChevronRight className="h-5 w-5 text-slate-600 group-hover:text-slate-400 transition-colors" />
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setImportMethod("manual");
+                          setMenuUploaded(true);
+                        }}
+                        className="w-full flex items-center justify-between p-4 rounded-xl bg-slate-900/30 border border-[#23242B] hover:border-slate-800 text-left transition-all group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-slate-950 text-slate-400">
+                            <FileText className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-semibold text-slate-200">Configure manually</h3>
+                            <p className="text-xs text-slate-500 mt-0.5">Input categories, dishes, and variants directly</p>
+                          </div>
+                        </div>
+                        <ChevronRight className="h-5 w-5 text-slate-600 group-hover:text-slate-400 transition-colors" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-6 rounded-2xl bg-slate-900/20 border border-[#23242B] space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-white capitalize">Method: {importMethod}</h3>
+                        <button
+                          onClick={() => {
+                            setImportMethod(null);
+                            setMenuUploaded(false);
+                            setMenuFile(null);
+                          }}
+                          className="text-xs font-semibold text-violet-400 hover:text-violet-300"
+                        >
+                          Change Method
+                        </button>
+                      </div>
+
+                      {importMethod === "upload" && (
+                        <div className="space-y-4">
+                          {menuUploaded ? (
+                            <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-950/20 border border-emerald-900/40 text-emerald-200 text-sm">
+                              <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+                              <span>File parsed successfully! {menuFileName}</span>
                             </div>
                           ) : (
-                            <>
-                              <Upload className="h-8 w-8 text-slate-600 mx-auto" />
-                              <p className="text-sm text-slate-300">Drag & drop your PDF menu or click to browse</p>
-                              <p className="text-xs text-slate-600">Supports PDF, PNG, JPG up to 10MB</p>
-                            </>
+                            <div className="border border-dashed border-slate-800 rounded-xl p-8 text-center space-y-3 relative hover:border-slate-700 transition-colors">
+                              <input
+                                type="file"
+                                accept=".pdf,.png,.jpg,.jpeg,.csv,.xlsx,.xls,.json"
+                                onChange={handleMenuUpload}
+                                disabled={isUploadingMenu}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              />
+                              {isUploadingMenu ? (
+                                <div className="space-y-2">
+                                  <Loader2 className="h-8 w-8 animate-spin text-violet-500 mx-auto" />
+                                  <p className="text-xs text-slate-400">Parsing menu layouts...</p>
+                                </div>
+                              ) : (
+                                <>
+                                  <Upload className="h-8 w-8 text-slate-600 mx-auto" />
+                                  <p className="text-sm text-slate-300">Drag & drop your Menu file or click to browse</p>
+                                  <p className="text-xs text-slate-600">Supports PDF, PNG, JPG, CSV, Excel (.xlsx/.xls), JSON up to 15MB</p>
+                                </>
+                              )}
+                            </div>
                           )}
                         </div>
                       )}
-                    </div>
-                  )}
 
-                  {importMethod === "link" && (
-                    <div className="space-y-3">
-                      <p className="text-xs text-slate-400">Enter a public web page url or delivery aggregator restaurant page link:</p>
-                      <div className="flex gap-2">
-                        <input
-                          type="url"
-                          placeholder="https://www.swiggy.com/restaurants/..."
-                          disabled={menuUploaded || isUploadingMenu}
-                          className="flex-1 bg-slate-950 border border-[#23242B] rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-violet-500"
-                        />
-                        <button
-                          onClick={() => {
-                            setIsUploadingMenu(true);
-                            setTimeout(() => {
-                              setIsUploadingMenu(false);
-                              setMenuUploaded(true);
-                            }, 2000);
-                          }}
-                          disabled={menuUploaded || isUploadingMenu}
-                          className="rounded-xl bg-violet-600 hover:bg-violet-500 text-white px-4 text-xs font-semibold shrink-0"
-                        >
-                          {isUploadingMenu ? "Syncing..." : "Sync"}
-                        </button>
-                      </div>
-                      {menuUploaded && (
-                        <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-950/20 border border-emerald-900/40 text-emerald-200 text-sm">
-                          <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
-                          <span>Aggregator items synced successfully!</span>
+                      {importMethod === "link" && (
+                        <div className="space-y-3">
+                          <p className="text-xs text-slate-400">Enter a public web page url or delivery aggregator restaurant page link:</p>
+                          <div className="flex gap-2">
+                            <input
+                              type="url"
+                              placeholder="https://www.swiggy.com/restaurants/..."
+                              disabled={menuUploaded || isUploadingMenu}
+                              className="flex-1 bg-slate-950 border border-[#23242B] rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                            />
+                            <button
+                              onClick={() => {
+                                setIsUploadingMenu(true);
+                                setTimeout(() => {
+                                  setIsUploadingMenu(false);
+                                  setMenuUploaded(true);
+                                }, 2000);
+                              }}
+                              disabled={menuUploaded || isUploadingMenu}
+                              className="rounded-xl bg-violet-600 hover:bg-violet-500 text-white px-4 text-xs font-semibold shrink-0"
+                            >
+                              {isUploadingMenu ? "Syncing..." : "Sync"}
+                            </button>
+                          </div>
+                          {menuUploaded && (
+                            <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-950/20 border border-emerald-900/40 text-emerald-200 text-sm">
+                              <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+                              <span>Aggregator items synced successfully!</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {importMethod === "manual" && (
+                        <div className="p-4 rounded-xl bg-slate-950 border border-[#23242B] text-center text-xs text-slate-400 leading-normal">
+                          We'll initialize an empty custom menu catalog. You can easily add items, modifiers, categories, and availability on the <strong>Menu page</strong> once setup is finished.
                         </div>
                       )}
                     </div>
-                  )}
-
-                  {importMethod === "manual" && (
-                    <div className="p-4 rounded-xl bg-slate-950 border border-[#23242B] text-center text-xs text-slate-400 leading-normal">
-                      We'll initialize an empty custom menu catalog. You can easily add items, modifiers, categories, and availability on the <strong>Menu page</strong> once setup is finished.
+                  )
+                }</>
+              ) : (
+                // ── MVP: Menu configured by Restroex team ─────────────────────
+                <div className="p-6 rounded-2xl bg-slate-900/20 border border-[#23242B] space-y-4">
+                  <div className="flex items-start gap-4">
+                    <div className="p-3 rounded-xl bg-violet-950/60 border border-violet-800/40 text-violet-400 shrink-0">
+                      <CheckCircle2 className="h-6 w-6" />
                     </div>
-                  )}
+                    <div className="space-y-1">
+                      <h3 className="text-base font-bold text-white">Menu Setup</h3>
+                      <p className="text-sm text-slate-300 leading-relaxed">
+                        Your restaurant menu will be configured by the{" "}
+                        <span className="text-violet-400 font-semibold">Restroex team</span> during onboarding.
+                      </p>
+                      <p className="text-xs text-slate-500 mt-2">
+                        No action is required from you.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-800/60">
+                    <p className="text-xs text-slate-500">
+                      Our team will set up your full menu catalog — including categories, items, prices, and variants — before your restaurant goes live.
+                      You can also add or edit items anytime from the Menu page after setup is complete.
+                    </p>
+                  </div>
                 </div>
               )}
             </div>

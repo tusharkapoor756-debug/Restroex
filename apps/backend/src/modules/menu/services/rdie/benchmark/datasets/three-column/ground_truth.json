@@ -1,0 +1,39 @@
+{
+  "categories": [
+    { "name": "TANDOORI" },
+    { "name": "APPETIZERS" },
+    { "name": "BREADS" }
+  ],
+  "items": [
+    { "name": "Malai Chaap", "category": "TANDOORI", "variants": [{ "name": "Half", "price": 100 }, { "name": "Full", "price": 150 }] },
+    { "name": "Malai Stuffed Chaap", "category": "TANDOORI", "variants": [{ "name": "Half", "price": 110 }, { "name": "Full", "price": 170 }] },
+    { "name": "Afghani Chaap", "category": "TANDOORI", "variants": [{ "name": "Half", "price": 110 }, { "name": "Full", "price": 160 }] },
+    { "name": "Achari Chaap", "category": "TANDOORI", "variants": [{ "name": "Half", "price": 100 }, { "name": "Full", "price": 150 }] },
+    { "name": "Lemon Chaap", "category": "TANDOORI", "variants": [{ "name": "Half", "price": 100 }, { "name": "Full", "price": 150 }] },
+    { "name": "Haryali Chaap", "category": "TANDOORI", "variants": [{ "name": "Half", "price": 100 }, { "name": "Full", "price": 150 }] },
+    { "name": "Punjabi Spicy Chaap", "category": "TANDOORI", "variants": [{ "name": "Half", "price": 100 }, { "name": "Full", "price": 150 }] },
+    { "name": "Butter Masala Chaap", "category": "TANDOORI", "variants": [{ "name": "Half", "price": 100 }, { "name": "Full", "price": 150 }] },
+    { "name": "Masala Stuffed Chaap", "category": "TANDOORI", "variants": [{ "name": "Half", "price": 110 }, { "name": "Full", "price": 170 }] },
+    { "name": "Nashedi Chaap Tikka", "category": "TANDOORI", "variants": [{ "name": "Half", "price": 110 }, { "name": "Full", "price": 160 }] },
+    { "name": "Paneer Tikka", "category": "TANDOORI", "variants": [{ "name": "Half", "price": 110 }, { "name": "Full", "price": 170 }] },
+    { "name": "Afghani Paneer Tikka", "category": "TANDOORI", "variants": [{ "name": "Half", "price": 120 }, { "name": "Full", "price": 180 }] },
+    { "name": "Special Veg Platter", "category": "TANDOORI", "basePrice": 180 },
+    { "name": "Chilli Potatoes", "category": "APPETIZERS", "variants": [{ "name": "Half", "price": 70 }, { "name": "Full", "price": 100 }] },
+    { "name": "Crispy Honey Potatoes", "category": "APPETIZERS", "variants": [{ "name": "Half", "price": 80 }, { "name": "Full", "price": 110 }] },
+    { "name": "Chilli Mushrooms", "category": "APPETIZERS", "variants": [{ "name": "Half", "price": 110 }, { "name": "Full", "price": 160 }] },
+    { "name": "Chilli Chaap Dry", "category": "APPETIZERS", "variants": [{ "name": "Half", "price": 100 }, { "name": "Full", "price": 150 }] },
+    { "name": "Chilli Paneer Dry", "category": "APPETIZERS", "variants": [{ "name": "Half", "price": 110 }, { "name": "Full", "price": 160 }] },
+    { "name": "Chilli Paneer Gravy", "category": "APPETIZERS", "variants": [{ "name": "Half", "price": 120 }, { "name": "Full", "price": 170 }] },
+    { "name": "Manchurian Dry", "category": "APPETIZERS", "variants": [{ "name": "Half", "price": 90 }, { "name": "Full", "price": 130 }] },
+    { "name": "Manchurian Gravy", "category": "APPETIZERS", "variants": [{ "name": "Half", "price": 100 }, { "name": "Full", "price": 140 }] },
+    { "name": "Honey Chilli Chaap Dry", "category": "APPETIZERS", "variants": [{ "name": "Half", "price": 110 }, { "name": "Full", "price": 160 }] },
+    { "name": "Rumali Roti", "category": "BREADS", "basePrice": 5 },
+    { "name": "Butter Rumali Roti", "category": "BREADS", "basePrice": 8 },
+    { "name": "Tandoori Roti", "category": "BREADS", "basePrice": 7 },
+    { "name": "Butter Tandoori Roti", "category": "BREADS", "basePrice": 10 },
+    { "name": "Lachha Parantha", "category": "BREADS", "basePrice": 25 },
+    { "name": "Butter Naan", "category": "BREADS", "basePrice": 25 },
+    { "name": "Garlic Naan", "category": "BREADS", "basePrice": 30 },
+    { "name": "Stuff Naan", "category": "BREADS", "basePrice": 40 }
+  ]
+}

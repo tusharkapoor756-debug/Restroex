@@ -199,10 +199,11 @@ export class OrderService {
       roundOffMode: (settings.settings as any).roundOffMode || 'nearest',
     });
 
-    // 4.5. Retrieve Customer Profile & Update profile fields (Without touching primary WhatsApp phone)
+    // 4.5. Retrieve / Create Customer Profile upon checkout placement (Enforces Visitor -> Customer boundary)
     const { CustomerService } = require('../../customers/services/customer.service');
     const customerService = new CustomerService();
-    let customer = await customerService.getOrCreateCustomer(restaurantId, customerPhone);
+    const createdSource = orderType === 'takeaway' || orderType === 'dining' ? 'WEB' : 'POS';
+    let customer = await customerService.getOrCreateCustomer(restaurantId, customerPhone, createdSource);
 
     if (customerName || customerContactPhone) {
       customer = await customerService.updateCustomerProfile(customer.id, {
@@ -213,6 +214,7 @@ export class OrderService {
 
     const orderData: Omit<Order, 'id' | 'createdAt' | 'updatedAt' | 'humanReadableId' | 'receiptSnapshot'> & { billingBreakdown?: any } = {
       restaurantId,
+      customerId: customer.id, // Primary Customer UUID Link
       customerPhone, // Primary WhatsApp LID / Phone (UNTOUCHED)
       status: 'checkout_pending',
       subtotal: billing.itemsSubtotal,
@@ -222,7 +224,6 @@ export class OrderService {
       deliveryCharge: billing.deliveryCharge,
       totalAmount: billing.grandTotal,
       idempotencyKey: effectiveIdempotencyKey,
-      customerId: customer.id,
       customerName: customerName || customer.name || null,
       customerContactPhone: customerContactPhone || customer.contactPhone || null,
       orderType,
@@ -269,7 +270,7 @@ export class OrderService {
   /**
    * Transitions an order from current status to a new target status.
    */
-  public async transitionOrder(orderId: string, targetStatus: OrderStatus): Promise<Order> {
+  public async transitionOrder(orderId: string, targetStatus: OrderStatus, cancellationReason?: string): Promise<Order> {
     const order = await this.repository.findById(orderId);
     if (!order) {
       throw new Error(`Order ${orderId} does not exist.`);
@@ -304,6 +305,7 @@ export class OrderService {
         orderType: updatedOrder.orderType,
         tableNumber: updatedOrder.tableNumber,
         totalAmount: updatedOrder.totalAmount,
+        cancellationReason: targetStatus === 'cancelled' ? cancellationReason : undefined,
         timestamp: new Date().toISOString(),
       });
     }

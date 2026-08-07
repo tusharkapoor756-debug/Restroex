@@ -9,6 +9,7 @@ import orderRoutes from '../modules/orders/routes/order.routes';
 import menuRoutes from '../modules/menu/routes/menu.routes';
 import customerRoutes from '../modules/customers/routes/customer.routes';
 import analyticsRoutes from '../modules/analytics/routes/analytics.routes';
+import operationsRoutes from '../modules/operations/routes/operations.routes';
 
 const router = Router();
 
@@ -23,6 +24,7 @@ router.use('/payments', paymentRoutes);
 router.use('/menu', menuRoutes);
 router.use(customerRoutes);
 router.use(analyticsRoutes);
+router.use(operationsRoutes);
 router.use(orderRoutes);
 router.use(receiptRoutes);
 import uploadRoutes from './upload.routes';

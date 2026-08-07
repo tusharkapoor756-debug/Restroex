@@ -66,6 +66,9 @@ export interface OrderItemSnapshot {
   quantity: number;
   unitPrice: number;
   totalPrice: number;
+  notes?: string | null;
+  instructions?: string | null;
+  customizations?: string[] | null;
 }
 
 export interface Order {
@@ -74,6 +77,12 @@ export interface Order {
   customerPhone: string;
   status: OrderStatus;
   totalAmount: number;
+  subtotal?: number;
+  tax?: number;
+  discountAmount?: number;
+  packingCharge?: number;
+  deliveryCharge?: number;
+  source?: string;
   idempotencyKey: string;
   humanReadableId: string;
   paidAt?: string | null;
@@ -91,8 +100,11 @@ export interface Order {
   items?: OrderItemSnapshot[];
   orderType?: 'takeaway' | 'dining' | string;
   tableNumber?: number | null;
+  notes?: string | null;
+  instructions?: string | null;
   customerId?: string | null;
   customerName?: string | null;
+  customerContactPhone?: string | null;
   customerAddress?: string | null;
   payment?: Payment;
 }
@@ -226,16 +238,58 @@ export interface DailyAnalytics {
   aiHitRate: number;
 }
 
-// ── Customers (placeholder — no backend endpoint yet) ─────────────────────
-
 export interface Customer {
   id: string;
+  customerCode?: string | null;
   phone: string;
   name?: string;
+  address?: string | null;
+  notes?: string | null;
   totalOrders: number;
   totalSpend: number;
+  totalSpent?: number; // API may return either name
   lastOrderAt: string;
+  firstOrderAt?: string;
+  createdSource?: string;
+  createdAt?: string;
 }
+
+export interface CustomerDetailsResponse {
+  customer: {
+    id: string;
+    customerCode?: string | null;
+    name: string;
+    phone: string;
+    address?: string | null;
+    notes?: string | null;
+    createdSource?: string;
+    isMerged?: boolean;
+    createdAt: string;
+  };
+  metrics: {
+    totalOrders: number;
+    completedOrders: number;
+    cancelledOrders: number;
+    lifetimeSpend: number;
+    averageOrderValue: number;
+    firstOrderDate: string;
+    lastOrderDate: string;
+    segment?: string;
+  };
+  favouriteItems: Array<{ name: string; quantity: number }>;
+  recentOrders: Array<{
+    id: string;
+    humanReadableId: string;
+    date: string;
+    status: string;
+    amount: number;
+  }>;
+  activity: {
+    lastSeen: string;
+    preferredSource: string;
+  };
+}
+
 
 // ── Inventory (placeholder — no backend endpoint yet) ─────────────────────
 
@@ -474,6 +528,8 @@ export interface Payment {
   amount: number;
   currency: string;
   paymentAttempt: number;
+  providerOrderId?: string | null;
+  providerTransactionId?: string | null;
   gatewayData?: Record<string, any>;
   metadata?: Record<string, any>;
   verifiedBy?: string | null;
@@ -490,6 +546,11 @@ export interface Payment {
   failedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  // Enriched at query time — never stored in the payments table
+  orderHumanReadableId?: string | null;
+  orderStatus?: string | null;
+  customerName?: string | null;
+  customerContactPhone?: string | null;
 }
 
 export type GatewayConfigStatus =

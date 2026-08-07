@@ -27,4 +27,17 @@ router.post('/items/:itemId/customizations', restaurantSessionMiddleware, asyncH
 router.put('/items/:itemId/customizations/:customizationId', restaurantSessionMiddleware, asyncHandler(controller.updateCustomization));
 router.delete('/items/:itemId/customizations/:customizationId', restaurantSessionMiddleware, asyncHandler(controller.deleteCustomization));
 
+// ─── Deterministic Menu Import Engine ──────────────────────────────────────────
+import multer from 'multer';
+import { MenuImportController } from '../controllers/menu-import.controller';
+const upload = multer({ limits: { fileSize: 15 * 1024 * 1024 } });
+const importController = new MenuImportController();
+
+router.post('/import/upload', restaurantSessionMiddleware, upload.single('file'), asyncHandler(importController.uploadImage));
+router.post('/import/parse', restaurantSessionMiddleware, asyncHandler(importController.parseOCR));
+router.get('/import/sessions/:id', restaurantSessionMiddleware, asyncHandler(importController.getSession));
+router.post('/import/sessions/:id/commit', restaurantSessionMiddleware, asyncHandler(importController.commitSession));
+
 export default router;
+
+

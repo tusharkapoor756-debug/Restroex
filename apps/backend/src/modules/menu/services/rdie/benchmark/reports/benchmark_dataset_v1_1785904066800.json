@@ -1,0 +1,306 @@
+{
+  "timestamp": "2026-08-05T04:27:46.798Z",
+  "datasetVersion": "dataset_v1",
+  "totalSamples": 4,
+  "sampleReports": [
+    {
+      "sampleName": "image.png",
+      "categoryGroup": "cafe",
+      "categoryAccuracy": {
+        "totalExpected": 2,
+        "totalExtracted": 3,
+        "truePositives": 2,
+        "falsePositives": 1,
+        "falseNegatives": 0,
+        "precision": 66.67,
+        "recall": 100,
+        "f1Score": 80,
+        "accuracy": 100
+      },
+      "itemAccuracy": {
+        "totalExpected": 5,
+        "totalExtracted": 10,
+        "truePositives": 5,
+        "falsePositives": 5,
+        "falseNegatives": 0,
+        "precision": 50,
+        "recall": 100,
+        "f1Score": 66.67,
+        "accuracy": 100
+      },
+      "priceAccuracy": {
+        "totalExpected": 5,
+        "totalExtracted": 0,
+        "truePositives": 0,
+        "falsePositives": 0,
+        "falseNegatives": 5,
+        "precision": 0,
+        "recall": 0,
+        "f1Score": 0,
+        "accuracy": 0
+      },
+      "variantAccuracy": {
+        "totalExpected": 0,
+        "totalExtracted": 0,
+        "truePositives": 0,
+        "falsePositives": 0,
+        "falseNegatives": 0,
+        "precision": 0,
+        "recall": 0,
+        "f1Score": 0,
+        "accuracy": 0
+      },
+      "relationshipAccuracy": {
+        "totalExpected": 5,
+        "totalExtracted": 10,
+        "truePositives": 5,
+        "falsePositives": 5,
+        "falseNegatives": 0,
+        "precision": 50,
+        "recall": 100,
+        "f1Score": 66.67,
+        "accuracy": 100
+      },
+      "overallF1Score": 45.34
+    },
+    {
+      "sampleName": "image.png",
+      "categoryGroup": "chinese",
+      "categoryAccuracy": {
+        "totalExpected": 2,
+        "totalExtracted": 3,
+        "truePositives": 2,
+        "falsePositives": 1,
+        "falseNegatives": 0,
+        "precision": 66.67,
+        "recall": 100,
+        "f1Score": 80,
+        "accuracy": 100
+      },
+      "itemAccuracy": {
+        "totalExpected": 5,
+        "totalExtracted": 10,
+        "truePositives": 5,
+        "falsePositives": 5,
+        "falseNegatives": 0,
+        "precision": 50,
+        "recall": 100,
+        "f1Score": 66.67,
+        "accuracy": 100
+      },
+      "priceAccuracy": {
+        "totalExpected": 5,
+        "totalExtracted": 0,
+        "truePositives": 0,
+        "falsePositives": 0,
+        "falseNegatives": 5,
+        "precision": 0,
+        "recall": 0,
+        "f1Score": 0,
+        "accuracy": 0
+      },
+      "variantAccuracy": {
+        "totalExpected": 0,
+        "totalExtracted": 0,
+        "truePositives": 0,
+        "falsePositives": 0,
+        "falseNegatives": 0,
+        "precision": 0,
+        "recall": 0,
+        "f1Score": 0,
+        "accuracy": 0
+      },
+      "relationshipAccuracy": {
+        "totalExpected": 5,
+        "totalExtracted": 10,
+        "truePositives": 5,
+        "falsePositives": 5,
+        "falseNegatives": 0,
+        "precision": 50,
+        "recall": 100,
+        "f1Score": 66.67,
+        "accuracy": 100
+      },
+      "overallF1Score": 45.34
+    },
+    {
+      "sampleName": "image.png",
+      "categoryGroup": "indian",
+      "categoryAccuracy": {
+        "totalExpected": 2,
+        "totalExtracted": 4,
+        "truePositives": 2,
+        "falsePositives": 2,
+        "falseNegatives": 0,
+        "precision": 50,
+        "recall": 100,
+        "f1Score": 66.67,
+        "accuracy": 100
+      },
+      "itemAccuracy": {
+        "totalExpected": 6,
+        "totalExtracted": 15,
+        "truePositives": 6,
+        "falsePositives": 9,
+        "falseNegatives": 0,
+        "precision": 40,
+        "recall": 100,
+        "f1Score": 57.14,
+        "accuracy": 100
+      },
+      "priceAccuracy": {
+        "totalExpected": 3,
+        "totalExtracted": 0,
+        "truePositives": 0,
+        "falsePositives": 0,
+        "falseNegatives": 3,
+        "precision": 0,
+        "recall": 0,
+        "f1Score": 0,
+        "accuracy": 0
+      },
+      "variantAccuracy": {
+        "totalExpected": 6,
+        "totalExtracted": 0,
+        "truePositives": 0,
+        "falsePositives": 0,
+        "falseNegatives": 6,
+        "precision": 0,
+        "recall": 0,
+        "f1Score": 0,
+        "accuracy": 0
+      },
+      "relationshipAccuracy": {
+        "totalExpected": 6,
+        "totalExtracted": 15,
+        "truePositives": 6,
+        "falsePositives": 9,
+        "falseNegatives": 0,
+        "precision": 40,
+        "recall": 100,
+        "f1Score": 57.14,
+        "accuracy": 100
+      },
+      "overallF1Score": 38.57
+    },
+    {
+      "sampleName": "image.png",
+      "categoryGroup": "pizza",
+      "categoryAccuracy": {
+        "totalExpected": 2,
+        "totalExtracted": 4,
+        "truePositives": 1,
+        "falsePositives": 3,
+        "falseNegatives": 1,
+        "precision": 25,
+        "recall": 50,
+        "f1Score": 33.33,
+        "accuracy": 50
+      },
+      "itemAccuracy": {
+        "totalExpected": 5,
+        "totalExtracted": 12,
+        "truePositives": 4,
+        "falsePositives": 8,
+        "falseNegatives": 1,
+        "precision": 33.33,
+        "recall": 80,
+        "f1Score": 47.06,
+        "accuracy": 80
+      },
+      "priceAccuracy": {
+        "totalExpected": 2,
+        "totalExtracted": 0,
+        "truePositives": 0,
+        "falsePositives": 0,
+        "falseNegatives": 2,
+        "precision": 0,
+        "recall": 0,
+        "f1Score": 0,
+        "accuracy": 0
+      },
+      "variantAccuracy": {
+        "totalExpected": 9,
+        "totalExtracted": 0,
+        "truePositives": 0,
+        "falsePositives": 0,
+        "falseNegatives": 9,
+        "precision": 0,
+        "recall": 0,
+        "f1Score": 0,
+        "accuracy": 0
+      },
+      "relationshipAccuracy": {
+        "totalExpected": 5,
+        "totalExtracted": 12,
+        "truePositives": 2,
+        "falsePositives": 10,
+        "falseNegatives": 3,
+        "precision": 16.67,
+        "recall": 40,
+        "f1Score": 23.53,
+        "accuracy": 40
+      },
+      "overallF1Score": 25
+    }
+  ],
+  "aggregated": {
+    "categoryAccuracy": {
+      "totalExpected": 8,
+      "totalExtracted": 14,
+      "truePositives": 7,
+      "falsePositives": 7,
+      "falseNegatives": 1,
+      "precision": 50,
+      "recall": 87.5,
+      "f1Score": 63.64,
+      "accuracy": 87.5
+    },
+    "itemAccuracy": {
+      "totalExpected": 21,
+      "totalExtracted": 47,
+      "truePositives": 20,
+      "falsePositives": 27,
+      "falseNegatives": 1,
+      "precision": 42.55,
+      "recall": 95.24,
+      "f1Score": 58.82,
+      "accuracy": 95.24
+    },
+    "priceAccuracy": {
+      "totalExpected": 15,
+      "totalExtracted": 0,
+      "truePositives": 0,
+      "falsePositives": 0,
+      "falseNegatives": 15,
+      "precision": 0,
+      "recall": 0,
+      "f1Score": 0,
+      "accuracy": 0
+    },
+    "variantAccuracy": {
+      "totalExpected": 15,
+      "totalExtracted": 0,
+      "truePositives": 0,
+      "falsePositives": 0,
+      "falseNegatives": 15,
+      "precision": 0,
+      "recall": 0,
+      "f1Score": 0,
+      "accuracy": 0
+    },
+    "relationshipAccuracy": {
+      "totalExpected": 21,
+      "totalExtracted": 47,
+      "truePositives": 18,
+      "falsePositives": 29,
+      "falseNegatives": 3,
+      "precision": 38.3,
+      "recall": 85.71,
+      "f1Score": 52.94,
+      "accuracy": 85.71
+    },
+    "overallF1Score": 38.07,
+    "overallAccuracy": 59.32
+  }
+}

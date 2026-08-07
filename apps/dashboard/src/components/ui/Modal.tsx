@@ -46,23 +46,28 @@ export function Modal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
         onClick={onClose}
       />
 
-      {/* Modal Dialog */}
+      {/* Modal Dialog — bottom sheet on mobile, centered on sm+ */}
       <div
         className={cn(
-          "relative w-full rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl transition-all animate-in zoom-in-95 duration-200 overflow-hidden flex flex-col max-h-[90vh]",
-          maxWidthStyles[maxWidth]
+          "relative w-full rounded-t-3xl sm:rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl transition-all animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[90vh]",
+          "sm:" + maxWidthStyles[maxWidth]
         )}
       >
+        {/* Mobile drag handle */}
+        <div className="sm:hidden flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full bg-slate-300 dark:bg-slate-600" />
+        </div>
+
         {/* Header */}
         {title && (
-          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-slate-100 dark:border-slate-800">
             <div className="text-lg font-bold font-heading text-slate-900 dark:text-slate-100">{title}</div>
             <button
               onClick={onClose}
@@ -74,11 +79,11 @@ export function Modal({
         )}
 
         {/* Content Body */}
-        <div className="p-6 overflow-y-auto flex-1">{children}</div>
+        <div className="px-5 sm:px-6 py-5 overflow-y-auto flex-1">{children}</div>
 
         {/* Footer */}
         {footer && (
-          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+          <div className="flex items-center justify-end gap-3 px-5 sm:px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
             {footer}
           </div>
         )}

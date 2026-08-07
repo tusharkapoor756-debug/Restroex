@@ -365,10 +365,10 @@ export class WhatsAppBotReplyService {
       }
 
       // ─────────────────────────────────────────────────────────────────────
-      // LAYER 0.5 — Customer Profile Onboarding & Identity Check
+      // LAYER 0.5 — Customer Conversation Check (Zero CRM Pollution)
+      // Note: WhatsApp greetings DO NOT create CRM customers.
+      // Customer profile & code (CUS-XXXXXX) are generated ONLY upon real checkout placement.
       // ─────────────────────────────────────────────────────────────────────
-      const { customerService } = require('../customers/services/customer.service');
-      let customer = await customerService.getOrCreateCustomer(restaurantId, customerPhone);
 
       // ── V1 OPERATIONS ENGINE — STATE HANDLERS (Order Modes & Table Validation) ──
       if (session.state === ConversationState.AWAITING_ORDER_MODE) {
@@ -560,7 +560,7 @@ export class WhatsAppBotReplyService {
 
         const total = dbCart.items.reduce((sum: number, i: any) => sum + i.quantity * i.unitPrice, 0);
         const recoveryMsg = [
-          `Welcome back ${customer.name || 'there'} 👋`,
+          `Welcome back there 👋`,
           '',
           'You already have items in your cart:',
           ...dbCart.items.map((item: any) => `• ${item.quantity} × Item (₹${item.unitPrice} each)`),

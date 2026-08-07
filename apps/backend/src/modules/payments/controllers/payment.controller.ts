@@ -116,12 +116,35 @@ export class PaymentController {
     }
   }
 
-  /** GET /payments/restaurant/:restaurantId — all payments for a restaurant */
+  /** GET /payments/restaurant/:restaurantId — paginated payments for a restaurant */
   public async getPaymentsByRestaurant(req: Request, res: Response): Promise<void> {
     try {
-      const payments = await this.service.getPaymentsByRestaurant(req.params.restaurantId as string);
-      logger.info({ restaurantId: req.params.restaurantId, count: payments.length }, '📤 Dashboard API returning analysis');
-      res.status(200).json({ success: true, data: payments });
+      const restaurantId = req.params.restaurantId as string;
+      const page = req.query.page ? parseInt(String(req.query.page), 10) : 1;
+      const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 15;
+      const status = req.query.status ? String(req.query.status) : undefined;
+      const search = req.query.search ? String(req.query.search) : undefined;
+      const sortOrder = req.query.sortOrder === 'asc' ? 'asc' : 'desc';
+
+      const result = await this.service.getPaginatedPaymentsByRestaurant(restaurantId, {
+        page,
+        limit,
+        status,
+        search,
+        sortOrder,
+      });
+
+      logger.info({ restaurantId, page, limit, total: result.totalCount }, '📤 Dashboard API returning paginated payments');
+      res.status(200).json({
+        success: true,
+        data: result.payments,
+        pagination: {
+          total: result.totalCount,
+          page,
+          limit,
+          totalPages: Math.ceil(result.totalCount / limit) || 1,
+        },
+      });
     } catch (error: any) {
       res.status(400).json({ success: false, error: error.message });
     }

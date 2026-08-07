@@ -28,7 +28,7 @@ export class WhatsAppOrderEventListener {
   }
 
   private async handleOrderEvent(status: string, payload: OrderDomainEventPayload): Promise<void> {
-    const { restaurantId, customerPhone, orderId } = payload;
+    const { restaurantId, customerPhone, orderId, cancellationReason } = payload;
     if (!customerPhone || !restaurantId) return;
 
     try {
@@ -42,12 +42,16 @@ export class WhatsAppOrderEventListener {
         ? (realOrder.humanReadableId.startsWith('#') ? realOrder.humanReadableId : `#${realOrder.humanReadableId}`)
         : `#${orderId.slice(0, 5).toUpperCase()}`;
 
+      const cancelledMessage = cancellationReason
+        ? `❌ *Order Cancelled*\nYour order ${displayOrderId} has been cancelled.\n📋 *Reason:* ${cancellationReason}\n\nWe apologize for the inconvenience. Please feel free to place a new order.`
+        : `❌ *Order Cancelled*\nYour order ${displayOrderId} has been cancelled. We apologize for the inconvenience.`;
+
       const statusMessages: Record<string, string> = {
         accepted: `✅ *Order Accepted!*\nYour order ${displayOrderId} has been accepted by the restaurant and is confirmed.`,
         preparing: `🍳 *Preparing Your Order*\nThe kitchen has started preparing your order ${displayOrderId}.`,
         ready: `🔔 *Order Ready!*\nYour order ${displayOrderId} is ready!`,
         completed: `✨ *Order Completed*\nThank you for dining with us! We hope you enjoyed your meal.`,
-        cancelled: `❌ *Order Cancelled*\nYour order ${displayOrderId} has been cancelled.`,
+        cancelled: cancelledMessage,
       };
 
       const messageText = statusMessages[status];

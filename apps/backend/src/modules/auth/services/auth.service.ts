@@ -59,7 +59,7 @@ export class AuthService {
       throw new BadRequestError('An account already exists for this email');
     }
 
-    const restaurant = await this.restaurants.upsertByPhoneNumber(restaurantName, phoneNumber.replace(/[^\d+]/g, ''));
+    const restaurant = await this.restaurants.upsertByPhoneNumber(restaurantName, phoneNumber.replace(/[^\d+]/g, ''), email);
     const passwordHash = await this.hashPassword(password);
     await this.authRepository.createOwner(email, passwordHash, restaurant.id, restaurantName);
 

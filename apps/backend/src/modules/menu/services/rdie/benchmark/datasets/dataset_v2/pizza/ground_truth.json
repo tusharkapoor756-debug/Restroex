@@ -1,0 +1,81 @@
+{
+  "categories": [
+    {
+      "name": "PIZZAS"
+    },
+    {
+      "name": "PASTAS"
+    }
+  ],
+  "items": [
+    {
+      "name": "Margherita Pizza",
+      "category": "PIZZAS",
+      "basePrice": null,
+      "variants": [
+        {
+          "name": "Small",
+          "price": 199
+        },
+        {
+          "name": "Medium",
+          "price": 349
+        },
+        {
+          "name": "Large",
+          "price": 499
+        }
+      ]
+    },
+    {
+      "name": "Farmhouse Special",
+      "category": "PIZZAS",
+      "basePrice": null,
+      "variants": [
+        {
+          "name": "Small",
+          "price": 249
+        },
+        {
+          "name": "Medium",
+          "price": 419
+        },
+        {
+          "name": "Large",
+          "price": 599
+        }
+      ]
+    },
+    {
+      "name": "Pepperoni Feast",
+      "category": "PIZZAS",
+      "basePrice": null,
+      "variants": [
+        {
+          "name": "Small",
+          "price": 299
+        },
+        {
+          "name": "Medium",
+          "price": 499
+        },
+        {
+          "name": "Large",
+          "price": 699
+        }
+      ]
+    },
+    {
+      "name": "White Sauce Penne",
+      "category": "PASTAS",
+      "basePrice": 220,
+      "variants": []
+    },
+    {
+      "name": "Arrabbiata Pasta",
+      "category": "PASTAS",
+      "basePrice": 240,
+      "variants": []
+    }
+  ]
+}

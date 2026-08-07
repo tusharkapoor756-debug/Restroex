@@ -254,7 +254,7 @@ export default function ProductionSettingsPage() {
       </div>
 
       {/* Tabs Row */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-px overflow-x-auto">
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-px overflow-x-auto w-full">
         {[
           { id: "profile", label: "Store Profile", icon: Building2 },
           { id: "charges", label: "Taxes & Charges", icon: Receipt },

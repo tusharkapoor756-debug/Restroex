@@ -1,0 +1,75 @@
+{
+  "categories": [
+    {
+      "name": "MAIN COURSE"
+    },
+    {
+      "name": "BREADS"
+    }
+  ],
+  "items": [
+    {
+      "name": "Paneer Butter Masala",
+      "category": "MAIN COURSE",
+      "basePrice": null,
+      "variants": [
+        {
+          "name": "Half",
+          "price": 180
+        },
+        {
+          "name": "Full",
+          "price": 320
+        }
+      ]
+    },
+    {
+      "name": "Dal Makhani",
+      "category": "MAIN COURSE",
+      "basePrice": null,
+      "variants": [
+        {
+          "name": "Half",
+          "price": 150
+        },
+        {
+          "name": "Full",
+          "price": 260
+        }
+      ]
+    },
+    {
+      "name": "Butter Chicken",
+      "category": "MAIN COURSE",
+      "basePrice": null,
+      "variants": [
+        {
+          "name": "Half",
+          "price": 240
+        },
+        {
+          "name": "Full",
+          "price": 420
+        }
+      ]
+    },
+    {
+      "name": "Butter Naan",
+      "category": "BREADS",
+      "basePrice": 40,
+      "variants": []
+    },
+    {
+      "name": "Garlic Naan",
+      "category": "BREADS",
+      "basePrice": 60,
+      "variants": []
+    },
+    {
+      "name": "Tandoori Roti",
+      "category": "BREADS",
+      "basePrice": 20,
+      "variants": []
+    }
+  ]
+}

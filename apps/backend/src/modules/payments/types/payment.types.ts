@@ -138,6 +138,13 @@ export interface Payment {
   failedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+
+  // Enriched fields — populated by JOIN queries in the paginated list view.
+  // These are never stored in the payments table; they are resolved at read time.
+  orderHumanReadableId?: string | null;
+  orderStatus?: string | null;
+  customerName?: string | null;
+  customerContactPhone?: string | null;
 }
 
 // DTO for creating a new payment record

@@ -70,6 +70,7 @@ export interface Order {
   customerName?: string | null;
   customerContactPhone?: string | null;
   customerAddress?: string | null;
+  source?: string;
   payment?: any;
 }
 

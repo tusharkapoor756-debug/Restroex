@@ -281,6 +281,19 @@ export class PaymentService {
     return this.repository.getByRestaurantId(restaurantId);
   }
 
+  public async getPaginatedPaymentsByRestaurant(
+    restaurantId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      search?: string;
+      sortOrder?: 'asc' | 'desc';
+    }
+  ): Promise<{ payments: Payment[]; totalCount: number }> {
+    return this.repository.getPaginatedByRestaurantId(restaurantId, options);
+  }
+
   // ----------------------------------------------------------
   // Internal helpers
   // ----------------------------------------------------------

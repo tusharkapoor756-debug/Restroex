@@ -20,6 +20,7 @@ export interface OrderDomainEventPayload {
   tableNumber?: number;
   totalAmount?: number;
   timestamp: string;
+  cancellationReason?: string;
   metadata?: Record<string, any>;
 }
 

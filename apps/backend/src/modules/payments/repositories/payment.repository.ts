@@ -95,6 +95,93 @@ export class PaymentRepository {
     return data.map((row) => this.mapToDomain(row));
   }
 
+  public async getPaginatedByRestaurantId(
+    restaurantId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      search?: string;
+      sortOrder?: 'asc' | 'desc';
+    }
+  ): Promise<{ payments: Payment[]; totalCount: number }> {
+    const page = options.page && options.page > 0 ? options.page : 1;
+    const limit = options.limit && options.limit > 0 ? options.limit : 15;
+    const offset = (page - 1) * limit;
+    const ascending = options.sortOrder === 'asc';
+
+    // JOIN orders and customers to resolve human_readable_id, order status,
+    // customer name, and real customer contact phone.
+    // We alias the join so Supabase returns them in a predictable shape.
+    let query = this.client
+      .from('payments')
+      .select(
+        `*,
+         order:orders!payments_order_id_fkey(
+           id,
+           human_readable_id,
+           status,
+           customer_name,
+           customer_contact_phone,
+           customer:customers(name, contact_phone)
+         )`,
+        { count: 'exact' }
+      )
+      .eq('restaurant_id', restaurantId);
+
+    if (options.status && options.status !== 'all') {
+      query = query.eq('payment_status', options.status);
+    }
+
+    if (options.search && options.search.trim() !== '') {
+      const term = options.search.trim();
+      query = query.or(`customer_phone.ilike.%${term}%,order_id.ilike.%${term}%,id.ilike.%${term}%`);
+    }
+
+    query = query.order('created_at', { ascending }).range(offset, offset + limit - 1);
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      return { payments: [], totalCount: 0 };
+    }
+
+    return {
+      payments: (data || []).map((row) => this.mapToDomainEnriched(row)),
+      totalCount: count || 0,
+    };
+  }
+
+  /**
+   * mapToDomainEnriched — used only by getPaginatedByRestaurantId.
+   * Accepts the JOIN result shape that includes a nested `order` object.
+   */
+  private mapToDomainEnriched(row: any): Payment {
+    const orderRow = row.order ?? null;
+    // Resolve customer contact phone:
+    //   1. Prefer the denormalised column on the orders table (customer_contact_phone).
+    //   2. Fall back to the related customers row.
+    //   3. Fall back to the payment's own customer_phone ONLY if it does NOT look
+    //      like a WhatsApp LID (i.e. does not contain '@lid').
+    const rawPhone: string = row.customer_phone ?? '';
+    const isLid = rawPhone.includes('@lid') || rawPhone.includes('@s.whatsapp');
+    const resolvedPhone =
+      orderRow?.customer_contact_phone ||
+      orderRow?.customer?.contact_phone ||
+      (!isLid ? rawPhone : null);
+
+    return {
+      ...this.mapToDomain(row),
+      orderHumanReadableId: orderRow?.human_readable_id ?? null,
+      orderStatus: orderRow?.status ?? null,
+      customerName:
+        orderRow?.customer_name ||
+        orderRow?.customer?.name ||
+        null,
+      customerContactPhone: resolvedPhone || null,
+    };
+  }
+
   public async getByIdempotencyKey(key: string): Promise<Payment | null> {
     const { data, error } = await this.client
       .from('payments')

@@ -8,6 +8,7 @@ const controller = new OrderOperationsController();
 
 router.get('/orders/active', restaurantSessionMiddleware, asyncHandler(controller.getActiveOrders));
 router.get('/orders/history', restaurantSessionMiddleware, asyncHandler(controller.getOrderHistory));
+router.get('/orders/:orderId', restaurantSessionMiddleware, asyncHandler(controller.getOrderById));
 router.patch('/orders/:orderId/status', restaurantSessionMiddleware, asyncHandler(controller.transitionOrder));
 
 export default router;

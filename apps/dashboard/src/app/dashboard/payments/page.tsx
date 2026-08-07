@@ -21,9 +21,13 @@ import {
   Ban,
   ImageIcon,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { PaymentsService } from "../../../lib/services/payments.service";
 import { Payment, PaymentStatus } from "../../../types";
 import { getRestaurantSession } from "../../../lib/auth";
+import { Button } from "../../../components/ui/Button";
+import { Card } from "../../../components/ui/Card";
+import { Sheet } from "../../../components/ui/Modal";
 
 // ─── Status helpers ────────────────────────────────────────────────────────────
 
@@ -106,482 +110,256 @@ function formatAmount(amount: number) {
   }).format(amount);
 }
 
-function timeAgo(date: string) {
-  const diff = Date.now() - new Date(date).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
+// ─── Payment Details Drawer (MVP Gateway Audit) ────────────────────────────────
 
-// ─── Verification Modal ────────────────────────────────────────────────────────
-
-interface ModalProps {
+interface PaymentDetailsDrawerProps {
   payment: Payment;
   onClose: () => void;
-  onVerified: () => void;
-  onRejected: () => void;
+  onOpenOrder: (orderId: string) => void;
 }
 
-function VerificationModal({ payment, onClose, onVerified, onRejected }: ModalProps) {
-  const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
-  const [screenshotLoading, setScreenshotLoading] = useState(false);
-  const [screenshotError, setScreenshotError] = useState<string | null>(null);
-
-  const [action, setAction] = useState<"idle" | "verifying" | "rejecting">("idle");
-  const [verifiedAmount, setVerifiedAmount] = useState(String(payment.amount));
-  const [verifiedTxRef, setVerifiedTxRef] = useState("");
-  const [verifyNotes, setVerifyNotes] = useState("");
-  const [rejectReason, setRejectReason] = useState("");
-  const [showRejectForm, setShowRejectForm] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Load screenshot as signed URL on mount
-  useEffect(() => {
-    const hasScreenshot =
-      payment.paymentStatus === "screenshot_uploaded" ||
-      payment.paymentStatus === "pending_verification" ||
-      payment.paymentStatus === "verified" ||
-      payment.paymentStatus === "rejected";
-
-    if (!hasScreenshot) return;
-
-    setScreenshotLoading(true);
-    PaymentsService.getScreenshotUrl(payment.id)
-      .then((res) => setScreenshotUrl(res.signedUrl))
-      .catch((err) => setScreenshotError(err.message || "Could not load screenshot"))
-      .finally(() => setScreenshotLoading(false));
-  }, [payment.id, payment.paymentStatus]);
-
-  const handleVerify = async () => {
-    setError(null);
-    setAction("verifying");
-    try {
-      await PaymentsService.verifyPayment(payment.id, {
-        notes: verifyNotes || undefined,
-        verifiedAmount: verifiedAmount ? Number(verifiedAmount) : undefined,
-        verifiedTransactionReference: verifiedTxRef || undefined,
-      });
-      onVerified();
-    } catch (err: any) {
-      setError(err.message || "Verification failed");
-      setAction("idle");
-    }
-  };
-
-  const handleReject = async () => {
-    if (!rejectReason.trim()) {
-      setError("Please enter a rejection reason");
-      return;
-    }
-    setError(null);
-    setAction("rejecting");
-    try {
-      await PaymentsService.rejectPayment(payment.id, { reason: rejectReason });
-      onRejected();
-    } catch (err: any) {
-      setError(err.message || "Rejection failed");
-      setAction("idle");
-    }
-  };
-
-  const canVerify =
-    payment.paymentStatus === "pending_verification" ||
-    payment.paymentStatus === "screenshot_uploaded";
-  const canReject = canVerify;
-
+// Helper: format a full datetime string for display
+function formatDateTime(ts: string | null | undefined): string {
+  if (!ts) return "N/A";
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-        onClick={onClose}
-      />
+    new Date(ts).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) +
+    " · " +
+    new Date(ts).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })
+  );
+}
 
-      {/* Panel */}
-      <div className="relative z-10 w-full max-w-2xl rounded-2xl border border-[#23242B] bg-[#111113] shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#23242B]">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600/20 border border-violet-500/30">
-              <CreditCard className="w-4.5 h-4.5 text-violet-400" />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold text-slate-100">Payment Review</h2>
-              <p className="text-xs text-slate-500 font-mono">{payment.id.slice(0, 16)}…</p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-white/5 text-slate-400 hover:text-slate-200 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+// Helper: format time only
+function formatTime(ts: string | null | undefined): string {
+  if (!ts) return "N/A";
+  return new Date(ts).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+}
 
-        <div className="grid grid-cols-2 divide-x divide-[#23242B] max-h-[75vh] overflow-y-auto">
-          {/* Left — Screenshot */}
-          <div className="p-5 flex flex-col gap-4">
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Payment Screenshot</p>
-            <div className="rounded-xl border border-[#23242B] bg-[#0D0D0F] flex items-center justify-center min-h-48 overflow-hidden">
-              {screenshotLoading && (
-                <div className="flex flex-col items-center gap-2 text-slate-500">
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                  <p className="text-xs">Loading screenshot…</p>
-                </div>
-              )}
-              {screenshotError && (
-                <div className="flex flex-col items-center gap-2 text-slate-500 p-4 text-center">
-                  <ImageIcon className="w-8 h-8 text-slate-600" />
-                  <p className="text-xs">{screenshotError}</p>
-                </div>
-              )}
-              {screenshotUrl && !screenshotLoading && (
-                <a href={screenshotUrl} target="_blank" rel="noreferrer" className="block w-full">
-                  <img
-                    src={screenshotUrl}
-                    alt="Payment screenshot"
-                    className="w-full object-contain max-h-72 hover:scale-105 transition-transform duration-200"
-                  />
-                </a>
-              )}
-              {!screenshotLoading && !screenshotError && !screenshotUrl && (
-                <div className="flex flex-col items-center gap-2 text-slate-500 p-4 text-center">
-                  <ImageIcon className="w-8 h-8 text-slate-600" />
-                  <p className="text-xs">No screenshot uploaded yet</p>
-                </div>
-              )}
-            </div>
+// Helper: capitalise + replace underscores
+function humanise(s: string | null | undefined) {
+  if (!s) return "";
+  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
-            {/* Customer Info */}
-            <div className="rounded-xl border border-[#23242B] bg-[#0D0D0F] p-4 space-y-3">
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Customer</p>
-              <div className="flex items-center gap-2 text-sm text-slate-300">
-                <Phone className="w-3.5 h-3.5 text-slate-500" />
-                <span className="font-mono">{payment.customerPhone}</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-slate-300">
-                <IndianRupee className="w-3.5 h-3.5 text-slate-500" />
-                <span className="font-semibold text-emerald-400">{formatAmount(payment.amount)}</span>
-                <span className="text-slate-500 text-xs">via {payment.paymentMethod.replace("_", " ")}</span>
-              </div>
-              <StatusBadge status={payment.paymentStatus} />
-            </div>
-
-            {/* Payment Intelligence Engine OCR Result Card */}
-            {payment.gatewayData?.analysis_result ? (
-              <div className="rounded-xl border border-violet-500/30 bg-violet-950/20 p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-violet-300">
-                    <Shield className="w-4 h-4 text-violet-400" />
-                    <span>Payment Intelligence Report</span>
-                  </div>
-                  <span
-                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
-                      payment.gatewayData.analysis_result.recommendedAction === 'APPROVE'
-                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                        : payment.gatewayData.analysis_result.recommendedAction === 'REJECT'
-                        ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                        : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                    }`}
-                  >
-                    {payment.gatewayData.analysis_result.recommendedAction.replace('_', ' ')}
-                  </span>
-                </div>
-
-                {/* 3 Score Header Summary */}
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div className="rounded-lg bg-[#0D0D0F] p-2 border border-[#23242B] text-center">
-                    <span className="text-slate-500 block text-[9px] uppercase font-semibold">OCR Confidence</span>
-                    <span className="font-bold text-violet-400 text-sm">
-                      {payment.gatewayData.analysis_result.ocrConfidence ?? payment.gatewayData.analysis_result.extractedDetails?.overallConfidence ?? 0}%
-                    </span>
-                  </div>
-                  <div className="rounded-lg bg-[#0D0D0F] p-2 border border-[#23242B] text-center">
-                    <span className="text-slate-500 block text-[9px] uppercase font-semibold">Verification Score</span>
-                    <span className={`font-bold text-sm ${
-                      (payment.gatewayData.analysis_result.verificationScore ?? 0) >= 80 ? 'text-emerald-400' : 'text-amber-400'
-                    }`}>
-                      {payment.gatewayData.analysis_result.verificationScore ?? payment.gatewayData.analysis_result.overallConfidence}%
-                    </span>
-                  </div>
-                  <div className="rounded-lg bg-[#0D0D0F] p-2 border border-[#23242B] text-center">
-                    <span className="text-slate-500 block text-[9px] uppercase font-semibold">Fraud Risk</span>
-                    <span className={`font-bold text-sm ${
-                      payment.gatewayData.analysis_result.riskScore >= 50 ? 'text-red-400' : 'text-slate-200'
-                    }`}>
-                      {payment.gatewayData.analysis_result.riskScore}/100
-                    </span>
-                  </div>
-                </div>
-
-                {/* SECTION 1: OCR EXTRACTION (NO PASS/FAIL HERE) */}
-                {payment.gatewayData.analysis_result.extractedDetails && (
-                  <div className="space-y-1.5 bg-[#0D0D0F] p-3 rounded-lg border border-[#23242B]">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[10px] text-violet-400 font-bold uppercase tracking-wider">
-                        1. OCR Extraction (Raw Evidence)
-                      </p>
-                      <span className="text-[9px] text-slate-400">Source: {payment.gatewayData.analysis_result.analysisSource ?? 'Local OCR'}</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-1.5 text-xs pt-1">
-                      <div className="flex justify-between py-0.5 border-b border-[#1A1B23]">
-                        <span className="text-slate-400">Amount:</span>
-                        <span className="font-semibold text-slate-200">
-                          {payment.gatewayData.analysis_result.extractedDetails.amount?.value ? `Extracted (₹${payment.gatewayData.analysis_result.extractedDetails.amount.value})` : 'Not Detected'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between py-0.5 border-b border-[#1A1B23]">
-                        <span className="text-slate-400">Receiver Name:</span>
-                        <span className="font-semibold text-slate-200">
-                          {payment.gatewayData.analysis_result.extractedDetails.receiverName?.value ? `Extracted (${payment.gatewayData.analysis_result.extractedDetails.receiverName.value})` : 'Not Detected'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between py-0.5 border-b border-[#1A1B23]">
-                        <span className="text-slate-400">Receiver UPI:</span>
-                        <span className="font-mono text-slate-200">
-                          {payment.gatewayData.analysis_result.extractedDetails.receiverUpiId?.value ? `Extracted (${payment.gatewayData.analysis_result.extractedDetails.receiverUpiId.value})` : 'Not Detected'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between py-0.5 border-b border-[#1A1B23]">
-                        <span className="text-slate-400">UTR / Ref:</span>
-                        <span className="font-mono text-slate-200">
-                          {payment.gatewayData.analysis_result.extractedDetails.upiReference?.value ? `Extracted (${payment.gatewayData.analysis_result.extractedDetails.upiReference.value})` : 'Not Detected'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between py-0.5 col-span-2">
-                        <span className="text-slate-400">Payment Status:</span>
-                        <span className="font-semibold text-slate-200">
-                          Screenshot Shows {payment.gatewayData.analysis_result.extractedDetails.paymentStatusInScreenshot?.value ?? 'UNKNOWN'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* SECTION 2: PAYMENT VERIFICATION (THE ONLY PLACE PASS/FAIL EXISTS) */}
-                {payment.gatewayData.analysis_result.merchantVerification && (
-                  <div className="space-y-1.5 bg-[#0D0D0F] p-3 rounded-lg border border-[#23242B]">
-                    <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
-                      2. Payment Verification (Business Rules)
-                    </p>
-                    {payment.gatewayData.analysis_result.merchantVerification.rules.map((rule: any) => {
-                      const isUnconfigured = rule.expected === 'Not Configured';
-                      return (
-                        <div key={rule.ruleId} className="flex items-start justify-between py-1 border-b border-[#1A1B23] last:border-0 text-xs">
-                          <div className="space-y-0.5">
-                            <span className="text-slate-300 font-semibold">{rule.title}</span>
-                            <span className="text-[10px] text-slate-500 block">
-                              Restaurant: <span className="font-mono text-slate-400">{rule.expected}</span> ↓ Screenshot: <span className="font-mono text-slate-300">{rule.actual}</span>
-                            </span>
-                          </div>
-                          <span
-                            className={`font-bold text-[10px] px-1.5 py-0.5 rounded ${
-                              isUnconfigured
-                                ? 'bg-slate-500/20 text-slate-400 border border-slate-500/30'
-                                : rule.passed
-                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                            }`}
-                          >
-                            {isUnconfigured ? 'NOT CONFIGURED' : rule.passed ? '✔ PASS' : '❌ FAIL'}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* SECTION 3: FRAUD SIGNALS & RISK ANALYSIS */}
-                <div className="space-y-1.5 bg-[#0D0D0F] p-3 rounded-lg border border-[#23242B]">
-                  <p className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">
-                    3. Fraud Signals & Risk Analysis
-                  </p>
-                  <div className="grid grid-cols-2 gap-2 text-xs pt-1">
-                    <div className="flex justify-between py-1 px-2 rounded bg-[#14151C] border border-[#23242B]">
-                      <span className="text-slate-400">Duplicate Screenshot:</span>
-                      <span className={`font-bold text-[10px] ${payment.gatewayData.analysis_result.duplicate ? 'text-red-400' : 'text-emerald-400'}`}>
-                        {payment.gatewayData.analysis_result.duplicate ? 'Detected ⚠️' : 'Not Detected'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between py-1 px-2 rounded bg-[#14151C] border border-[#23242B]">
-                      <span className="text-slate-400">Risk Score Level:</span>
-                      <span className={`font-bold text-[10px] ${payment.gatewayData.analysis_result.riskScore >= 50 ? 'text-red-400' : 'text-emerald-400'}`}>
-                        {payment.gatewayData.analysis_result.riskScore >= 50 ? 'High Risk' : 'Low Risk'} ({payment.gatewayData.analysis_result.riskScore}/100)
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* DECISION BANNER & 3-SECOND HUMAN EXPLANATION */}
-                {payment.gatewayData.analysis_result.humanSummary && (
-                  <div
-                    className={`p-3 rounded-lg border text-xs leading-relaxed ${
-                      payment.gatewayData.analysis_result.recommendedAction === 'APPROVE'
-                        ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300'
-                        : payment.gatewayData.analysis_result.recommendedAction === 'REJECT'
-                        ? 'bg-red-950/20 border-red-500/30 text-red-300'
-                        : 'bg-amber-950/20 border-amber-500/30 text-amber-300'
-                    }`}
-                  >
-                    <p className="font-bold text-[11px] uppercase tracking-wider mb-0.5">
-                      Decision: {payment.gatewayData.analysis_result.recommendedAction}
-                    </p>
-                    <p className="text-[11px]">
-                      {payment.gatewayData.analysis_result.humanSummary}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ) : null}
-          </div>
-
-          {/* Right — Actions */}
-          <div className="p-5 flex flex-col gap-4">
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Verification</p>
-
-            {!showRejectForm ? (
-              <>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">Verified Amount (₹)</label>
-                    <input
-                      type="number"
-                      value={verifiedAmount}
-                      onChange={(e) => setVerifiedAmount(e.target.value)}
-                      className="w-full rounded-lg border border-[#23242B] bg-[#0D0D0F] px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-violet-500/50 transition-colors"
-                      placeholder="e.g. 450.00"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">Transaction Reference (optional)</label>
-                    <input
-                      value={verifiedTxRef}
-                      onChange={(e) => setVerifiedTxRef(e.target.value)}
-                      className="w-full rounded-lg border border-[#23242B] bg-[#0D0D0F] px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-violet-500/50 transition-colors font-mono"
-                      placeholder="UTR / Transaction ID"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">Notes (optional)</label>
-                    <textarea
-                      value={verifyNotes}
-                      onChange={(e) => setVerifyNotes(e.target.value)}
-                      rows={2}
-                      className="w-full rounded-lg border border-[#23242B] bg-[#0D0D0F] px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-violet-500/50 transition-colors resize-none"
-                      placeholder="Any notes…"
-                    />
-                  </div>
-                </div>
-
-                {error && (
-                  <p className="text-xs text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2">
-                    {error}
-                  </p>
-                )}
-
-                <div className="flex flex-col gap-2 mt-auto">
-                  {canVerify && (
-                    <button
-                      onClick={handleVerify}
-                      disabled={action !== "idle"}
-                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 transition-all duration-200 shadow-[0_0_20px_rgba(16,185,129,0.3)]"
-                    >
-                      {action === "verifying" ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <BadgeCheck className="w-4 h-4" />
-                      )}
-                      {action === "verifying" ? "Verifying…" : "Approve Payment"}
-                    </button>
-                  )}
-                  {canReject && (
-                    <button
-                      onClick={() => setShowRejectForm(true)}
-                      disabled={action !== "idle"}
-                      className="w-full flex items-center justify-center gap-2 rounded-xl border border-red-500/30 hover:bg-red-500/10 disabled:opacity-50 text-red-400 text-sm font-medium py-2.5 transition-all duration-200"
-                    >
-                      <Ban className="w-4 h-4" />
-                      Reject Payment
-                    </button>
-                  )}
-                  {!canVerify && !canReject && (
-                    <p className="text-xs text-center text-slate-500 py-2">
-                      This payment has already been {payment.paymentStatus}.
-                    </p>
-                  )}
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="space-y-3">
-                  <p className="text-sm text-slate-300">Provide a reason for rejection. This will be sent to the customer via WhatsApp.</p>
-                  <textarea
-                    value={rejectReason}
-                    onChange={(e) => setRejectReason(e.target.value)}
-                    rows={4}
-                    autoFocus
-                    className="w-full rounded-lg border border-red-500/30 bg-[#0D0D0F] px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-red-500/50 transition-colors resize-none"
-                    placeholder="e.g. Screenshot is unclear, amount mismatch, wrong UPI ID…"
-                  />
-                </div>
-
-                {error && (
-                  <p className="text-xs text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2">
-                    {error}
-                  </p>
-                )}
-
-                <div className="flex gap-2 mt-auto">
-                  <button
-                    onClick={() => { setShowRejectForm(false); setError(null); }}
-                    className="flex-1 rounded-xl border border-[#23242B] hover:bg-white/5 text-slate-400 text-sm py-2.5 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleReject}
-                    disabled={action !== "idle" || !rejectReason.trim()}
-                    className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 transition-all"
-                  >
-                    {action === "rejecting" ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Ban className="w-4 h-4" />
-                    )}
-                    {action === "rejecting" ? "Rejecting…" : "Confirm Reject"}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+// Subcomponent: a single labelled field row
+function InfoRow({ label, value, mono = false }: { label: string; value: React.ReactNode; mono?: boolean }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{label}</span>
+      <span className={`text-sm font-semibold text-slate-900 dark:text-slate-100 ${mono ? "font-mono" : ""}`}>
+        {value}
+      </span>
     </div>
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// Subcomponent: a gateway data row (label left, value right)
+function GatewayRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-1.5 border-b border-slate-100 dark:border-slate-800 last:border-0">
+      <span className="text-xs text-slate-500 dark:text-slate-400 shrink-0">{label}</span>
+      <span className="text-xs font-mono font-semibold text-slate-900 dark:text-slate-100 text-right break-all">
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function PaymentDetailsDrawer({ payment, onClose, onOpenOrder }: PaymentDetailsDrawerProps) {
+  const statusStr = String(payment.paymentStatus);
+  const isPaid =
+    statusStr === "verified" ||
+    statusStr === "captured" ||
+    statusStr === "paid";
+  const isFailed = payment.paymentStatus === "failed" || payment.paymentStatus === "rejected";
+  const isRefunded = payment.paymentStatus === "refunded";
+
+  // ── Resolve display values ──────────────────────────────────────────────────
+
+  // Human-readable order ID: prefer enriched field, never show raw UUID
+  const displayOrderId = payment.orderHumanReadableId || "—";
+
+  // Order status from enriched JOIN
+  const displayOrderStatus = payment.orderStatus ? humanise(payment.orderStatus) : "—";
+
+  // Customer name
+  const displayCustomerName = payment.customerName || "—";
+
+  // Customer phone: prefer enriched field (real phone from orders/customers table).
+  // NEVER display WhatsApp LID (contains @lid).
+  const rawPhone = payment.customerContactPhone || payment.customerPhone || "";
+  const isLid = rawPhone.includes("@lid") || rawPhone.includes("@s.whatsapp");
+  const displayPhone = isLid ? "Not Available" : rawPhone || "Not Available";
+
+  // ── Gateway data (only provider-origin IDs) ─────────────────────────────────
+  const gd = (payment.gatewayData as Record<string, any>) ?? {};
+  const providerNameLower = (payment.providerName || "").toLowerCase();
+  const isRazorpay = providerNameLower.includes("razorpay");
+
+  // Dynamic labels based on gateway provider
+  const gatewayOrderLabel = isRazorpay ? "Razorpay Order ID" : "Gateway Order ID";
+  const gatewayPaymentLabel = isRazorpay ? "Razorpay Payment ID" : "Gateway Payment ID";
+
+  // Universal provider resolution (columns or gatewayData JSONB)
+  const gatewayOrderId =
+    payment.providerOrderId ||
+    gd.orderId ||
+    gd.razorpay_order_id ||
+    gd.cf_order_id ||
+    gd.merchantOrderId ||
+    "Not Available";
+
+  const gatewayPaymentId =
+    payment.providerTransactionId ||
+    gd.paymentId ||
+    gd.razorpay_payment_id ||
+    gd.cf_payment_id ||
+    gd.transactionId ||
+    "Not Available";
+
+  const gatewayUtr =
+    gd.utr ||
+    gd.bank_reference ||
+    gd.acquirer_data?.upi_transaction_id ||
+    payment.verifiedTransactionReference ||
+    "Not Available";
+
+  const gatewayName = humanise(payment.providerName) || "Not Available";
+
+  return (
+    <Sheet
+      isOpen={Boolean(payment)}
+      onClose={onClose}
+      title={`Payment Details — ${payment.orderHumanReadableId || "Payment"}`}
+    >
+      <div className="space-y-5 text-xs text-slate-900 dark:text-slate-100">
+
+        {/* ── SECTION 1: Payment Summary ────────────────────────────────────── */}
+        <div className="rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 overflow-hidden">
+          <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-slate-200/80 dark:border-slate-800">
+            <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px]">Payment Summary</span>
+            <StatusBadge status={payment.paymentStatus} />
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4 p-4">
+            <InfoRow
+              label="Amount"
+              value={
+                <span className="text-base font-extrabold text-brand-600 dark:text-brand-400">
+                  {formatAmount(payment.amount)}
+                </span>
+              }
+            />
+            <InfoRow label="Payment Method" value={humanise(payment.paymentMethod) || "UPI Gateway"} />
+            <InfoRow label="Gateway" value={humanise(payment.providerName) || "—"} />
+            <InfoRow label="Created At" value={formatDateTime(payment.createdAt)} />
+            {payment.completedAt && (
+              <InfoRow label="Completed At" value={formatDateTime(payment.completedAt)} />
+            )}
+          </div>
+        </div>
+
+        {/* ── SECTION 2: Linked Order ───────────────────────────────────────── */}
+        <div className="rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 overflow-hidden">
+          <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-slate-200/80 dark:border-slate-800">
+            <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px]">Linked Order</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onOpenOrder(payment.orderId)}
+              className="gap-1.5 font-bold text-xs"
+            >
+              <Eye className="h-3.5 w-3.5" />
+              <span>View Order</span>
+            </Button>
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4 p-4">
+            <InfoRow label="Restroex Order ID" value={displayOrderId} mono />
+            <InfoRow label="Order Status" value={displayOrderStatus} />
+            <InfoRow label="Customer Name" value={displayCustomerName} />
+            <InfoRow label="Customer Phone" value={displayPhone} mono />
+          </div>
+        </div>
+
+        {/* ── SECTION 3: Gateway Transaction Details (Always visible, strict provider IDs) ─────── */}
+        <div className="rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 overflow-hidden">
+          <div className="px-4 pt-3 pb-2 border-b border-slate-200/80 dark:border-slate-800">
+            <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px]">Gateway Transaction Details</span>
+          </div>
+          <div className="px-4 py-2">
+            <GatewayRow label="Gateway" value={gatewayName} />
+            <GatewayRow label={gatewayOrderLabel} value={gatewayOrderId} />
+            <GatewayRow label={gatewayPaymentLabel} value={gatewayPaymentId} />
+            <GatewayRow label="UTR / Bank Reference" value={gatewayUtr} />
+          </div>
+        </div>
+
+        {/* ── SECTION 4: Payment Timeline ──────────────────────────────────── */}
+        <div className="rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 overflow-hidden">
+          <div className="px-4 pt-3 pb-2 border-b border-slate-200/80 dark:border-slate-800">
+            <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px]">Payment Timeline</span>
+          </div>
+          <div className="px-4 py-3 space-y-2.5">
+            <div className="flex items-center gap-2.5 text-[11px]">
+              <div className="h-2 w-2 rounded-full bg-brand-500 shrink-0" />
+              <span className="text-slate-500 font-medium">Initiated:</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">{formatTime(payment.createdAt)}</span>
+            </div>
+            {isPaid && (
+              <div className="flex items-center gap-2.5 text-[11px]">
+                <div className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                <span className="text-slate-500 font-medium">Captured:</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                  {payment.completedAt ? formatTime(payment.completedAt) : payment.verifiedAt ? formatTime(payment.verifiedAt) : "Confirmed"}
+                </span>
+              </div>
+            )}
+            {isFailed && (
+              <div className="flex items-center gap-2.5 text-[11px]">
+                <div className="h-2 w-2 rounded-full bg-red-500 shrink-0" />
+                <span className="text-slate-500 font-medium">Failed:</span>
+                <span className="font-semibold text-red-600 dark:text-red-400">
+                  {payment.failureReason || "Gateway Declined"}
+                </span>
+              </div>
+            )}
+            {isRefunded && (
+              <div className="flex items-center gap-2.5 text-[11px]">
+                <div className="h-2 w-2 rounded-full bg-slate-400 shrink-0" />
+                <span className="text-slate-500 font-medium">Refunded:</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-300">Refund Processed</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
+// ─── Main Payments Page (MVP Read-Only Gateway Audit) ──────────────────────────
 
 const FILTER_OPTIONS: { label: string; value: string }[] = [
   { label: "All", value: "all" },
-  { label: "Awaiting Verification", value: "pending_verification" },
-  { label: "Screenshot Uploaded", value: "screenshot_uploaded" },
+  { label: "Paid", value: "verified" },
   { label: "Pending", value: "pending" },
-  { label: "Verified", value: "verified" },
-  { label: "Rejected", value: "rejected" },
+  { label: "Failed", value: "failed" },
+  { label: "Refunded", value: "refunded" },
 ];
 
 export default function PaymentsPage() {
+  const router = useRouter();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
+
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
   useEffect(() => {
     const session = getRestaurantSession();
@@ -593,251 +371,237 @@ export default function PaymentsPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await PaymentsService.getPaymentsByRestaurant(restaurantId);
-      setPayments(data);
+      const res = await PaymentsService.getPaymentsByRestaurant(restaurantId, {
+        page,
+        limit: 15,
+        status: statusFilter === "all" ? undefined : statusFilter,
+        search: search.trim() || undefined,
+        sortOrder,
+      });
+      setPayments(res.payments);
+      setTotalPages(res.pagination.totalPages || 1);
+      setTotalCount(res.pagination.total || 0);
     } catch (err: any) {
       setError(err.message || "Failed to load payments");
     } finally {
       setLoading(false);
     }
-  }, [restaurantId]);
+  }, [restaurantId, page, statusFilter, search, sortOrder]);
 
   useEffect(() => {
     fetchPayments();
-    const interval = setInterval(fetchPayments, 5000);
+    const interval = setInterval(fetchPayments, 8000);
     return () => clearInterval(interval);
   }, [fetchPayments]);
 
-  const filtered = payments.filter((p) => {
-    const matchStatus = statusFilter === "all" || p.paymentStatus === statusFilter;
-    const matchSearch =
-      !search ||
-      p.customerPhone.includes(search) ||
-      p.orderId.toLowerCase().includes(search.toLowerCase()) ||
-      p.id.toLowerCase().includes(search.toLowerCase());
-    return matchStatus && matchSearch;
-  });
-
-  // Stats
-  const totalVerified = payments.filter((p) => p.paymentStatus === "verified").length;
-  const totalPendingVerification = payments.filter(
-    (p) => p.paymentStatus === "pending_verification" || p.paymentStatus === "screenshot_uploaded"
-  ).length;
-  const totalRevenue = payments
-    .filter((p) => p.paymentStatus === "verified")
-    .reduce((sum, p) => sum + p.amount, 0);
-
-  const handleModalClose = () => {
-    setSelectedPayment(null);
-    fetchPayments();
+  const handleOpenOrder = (orderId: string) => {
+    // Navigate to Order History with the order UUID as a query param.
+    // The Order History page reads ?orderId= on mount and auto-opens the drawer.
+    router.push(`/dashboard/orders/history?orderId=${encodeURIComponent(orderId)}`);
   };
 
   return (
-    <div className="min-h-full bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8">
-
-        {/* ── Page Header ── */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="font-heading text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">Payments & Verification</h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Verify and manage Manual UPI payments and automated gateway settlements.</p>
-          </div>
-          <button
-            onClick={fetchPayments}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-[#23242B] hover:bg-white/5 text-slate-400 hover:text-slate-200 text-sm transition-all disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
+    <div className="min-h-full bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+        <div>
+          <h1 className="font-heading text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
+            <CreditCard className="h-6 w-6 text-brand-600 dark:text-brand-400" />
+            <span>Payments & Gateway Settlements</span>
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            Audit customer payments and automated gateway settlements in real-time.
+          </p>
         </div>
 
-        {/* ── Stat Cards ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="rounded-2xl border border-[#23242B] bg-[#111113] p-5">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600/20 border border-violet-500/30">
-                <Shield className="w-4.5 h-4.5 text-violet-400" />
-              </div>
-              <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">Awaiting Verification</p>
-            </div>
-            <p className="text-3xl font-bold text-slate-100">{totalPendingVerification}</p>
-            <p className="text-xs text-slate-500 mt-1">Need your attention</p>
-          </div>
-
-          <div className="rounded-2xl border border-[#23242B] bg-[#111113] p-5">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600/20 border border-emerald-500/30">
-                <CheckCircle2 className="w-4.5 h-4.5 text-emerald-400" />
-              </div>
-              <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">Verified Today</p>
-            </div>
-            <p className="text-3xl font-bold text-slate-100">{totalVerified}</p>
-            <p className="text-xs text-slate-500 mt-1">Confirmed payments</p>
-          </div>
-
-          <div className="rounded-2xl border border-[#23242B] bg-[#111113] p-5">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-600/20 border border-amber-500/30">
-                <IndianRupee className="w-4.5 h-4.5 text-amber-400" />
-              </div>
-              <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">Total Revenue</p>
-            </div>
-            <p className="text-3xl font-bold text-emerald-400">{formatAmount(totalRevenue)}</p>
-            <p className="text-xs text-slate-500 mt-1">From verified payments</p>
-          </div>
-        </div>
-
-        {/* ── Filters & Search ── */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by phone, order ID, payment ID…"
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#23242B] bg-[#111113] text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-violet-500/50 transition-colors"
-            />
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            {FILTER_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setStatusFilter(opt.value)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  statusFilter === opt.value
-                    ? "bg-violet-600 text-white shadow-[0_0_10px_rgba(124,58,237,0.4)]"
-                    : "border border-[#23242B] bg-[#111113] text-slate-400 hover:text-slate-200 hover:border-slate-600"
-                }`}
-              >
-                {opt.label}
-                {opt.value !== "all" && (
-                  <span className="ml-1.5 opacity-60">
-                    {payments.filter((p) => p.paymentStatus === opt.value).length}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* ── Table ── */}
-        <div className="rounded-2xl border border-[#23242B] bg-[#111113] overflow-hidden">
-          {error && (
-            <div className="flex items-center gap-3 p-4 border-b border-[#23242B] bg-red-500/5 text-red-400 text-sm">
-              <AlertTriangle className="w-4 h-4 shrink-0" />
-              {error}
-            </div>
-          )}
-
-          {loading && !payments.length ? (
-            <div className="flex flex-col items-center justify-center py-20 text-slate-500 gap-3">
-              <Loader2 className="w-6 h-6 animate-spin text-violet-500" />
-              <p className="text-sm">Loading payments…</p>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-slate-500 gap-3">
-              <CreditCard className="w-10 h-10 text-slate-700" />
-              <p className="text-sm">No payments found</p>
-              <p className="text-xs text-slate-600">
-                {statusFilter !== "all" ? "Try changing the filter" : "Payments will appear here after checkout"}
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-[#23242B]">
-                    <th className="px-5 py-3.5 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Payment</th>
-                    <th className="px-5 py-3.5 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Customer</th>
-                    <th className="px-5 py-3.5 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Method</th>
-                    <th className="px-5 py-3.5 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Amount</th>
-                    <th className="px-5 py-3.5 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
-                    <th className="px-5 py-3.5 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Time</th>
-                    <th className="px-5 py-3.5 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#23242B]/60">
-                  {filtered.map((payment) => {
-                    const needsAction =
-                      payment.paymentStatus === "pending_verification" ||
-                      payment.paymentStatus === "screenshot_uploaded";
-                    return (
-                      <tr
-                        key={payment.id}
-                        className={`group transition-colors ${needsAction ? "bg-violet-600/5 hover:bg-violet-600/10" : "hover:bg-white/[0.02]"}`}
-                      >
-                        <td className="px-5 py-4">
-                          <div>
-                            <p className="font-mono text-xs text-slate-300">{payment.id.slice(0, 14)}…</p>
-                            <p className="text-xs text-slate-600 mt-0.5">Order: {payment.orderId.slice(0, 10)}…</p>
-                          </div>
-                        </td>
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-2 text-slate-300">
-                            <Phone className="w-3.5 h-3.5 text-slate-600" />
-                            <span className="font-mono text-sm">{payment.customerPhone}</span>
-                          </div>
-                        </td>
-                        <td className="px-5 py-4">
-                          <span className="text-xs text-slate-400 capitalize">
-                            {payment.paymentMethod.replace(/_/g, " ")}
-                          </span>
-                        </td>
-                        <td className="px-5 py-4">
-                          <span className="font-semibold text-slate-200">{formatAmount(payment.amount)}</span>
-                          {payment.verifiedAmount && payment.verifiedAmount !== payment.amount && (
-                            <p className="text-xs text-emerald-400 mt-0.5">Verified: {formatAmount(payment.verifiedAmount)}</p>
-                          )}
-                        </td>
-                        <td className="px-5 py-4">
-                          <StatusBadge status={payment.paymentStatus} />
-                          {needsAction && (
-                            <span className="block mt-1 text-xs text-violet-400 animate-pulse">● Action needed</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-4">
-                          <span className="text-xs text-slate-500">{timeAgo(payment.createdAt)}</span>
-                        </td>
-                        <td className="px-5 py-4 text-right">
-                          <button
-                            onClick={() => setSelectedPayment(payment)}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                              needsAction
-                                ? "bg-violet-600 hover:bg-violet-700 text-white shadow-[0_0_12px_rgba(124,58,237,0.4)]"
-                                : "border border-[#23242B] hover:bg-white/5 text-slate-400 hover:text-slate-200"
-                            }`}
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                            {needsAction ? "Verify" : "View"}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Footer */}
-          {filtered.length > 0 && (
-            <div className="px-5 py-3 border-t border-[#23242B]/60 flex items-center justify-between">
-              <p className="text-xs text-slate-500">
-                Showing {filtered.length} of {payments.length} payments
-              </p>
-            </div>
-          )}
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={fetchPayments}
+          disabled={loading}
+          className="gap-2 font-semibold self-start sm:self-auto"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          <span>Refresh Records</span>
+        </Button>
       </div>
 
-      {/* ── Verification Modal ── */}
+      {/* Filters & Search Bar */}
+      <Card className="p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+          <div className="relative flex-1 w-full sm:w-80">
+            <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
+            <input
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Search by phone, order ID, payment ID..."
+              className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-medium text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/50"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+            <div className="flex items-center gap-1.5 shrink-0">
+              {FILTER_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => {
+                    setStatusFilter(opt.value);
+                    setPage(1);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    statusFilter === opt.value
+                      ? "bg-brand-600 text-white shadow-sm"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Date Sorting Filter */}
+            <select
+              value={sortOrder}
+              onChange={(e) => {
+                setSortOrder(e.target.value as "desc" | "asc");
+                setPage(1);
+              }}
+              className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
+            >
+              <option value="desc">Newest First</option>
+              <option value="asc">Oldest First</option>
+            </select>
+          </div>
+        </div>
+      </Card>
+
+      {/* Paginated Table Card */}
+      <Card className="p-0 overflow-hidden">
+        {error && (
+          <div className="flex items-center gap-3 p-4 border-b border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 text-xs">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {loading && payments.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-slate-500 gap-3">
+            <Loader2 className="h-7 w-7 animate-spin text-brand-600" />
+            <p className="text-xs font-medium">Loading payment records...</p>
+          </div>
+        ) : payments.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-slate-500 gap-3">
+            <CreditCard className="h-10 w-10 text-slate-400 dark:text-slate-600" />
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">No Payments Found</p>
+            <p className="text-xs text-slate-500">
+              {statusFilter !== "all" || search ? "Try adjusting search or status filters" : "Payments will appear here automatically as customer checkouts occur."}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 text-slate-500 uppercase font-bold tracking-wider">
+                  <th className="px-5 py-3.5 text-left">Payment ID</th>
+                  <th className="px-5 py-3.5 text-left">Order ID</th>
+                  <th className="px-5 py-3.5 text-left">Customer</th>
+                  <th className="px-5 py-3.5 text-left">Method</th>
+                  <th className="px-5 py-3.5 text-left">Gateway</th>
+                  <th className="px-5 py-3.5 text-left">Amount</th>
+                  <th className="px-5 py-3.5 text-left">Status</th>
+                  <th className="px-5 py-3.5 text-left">Date & Time</th>
+                  <th className="px-5 py-3.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {payments.map((payment) => {
+                  return (
+                    <tr
+                      key={payment.id}
+                      className="group hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                    >
+                      <td className="px-5 py-4 font-mono font-bold text-brand-600 dark:text-brand-400">
+                        {payment.id.slice(0, 14)}…
+                      </td>
+                      <td className="px-5 py-4 font-mono text-slate-700 dark:text-slate-300">
+                        {payment.orderId.slice(0, 12)}…
+                      </td>
+                      <td className="px-5 py-4 font-mono text-slate-700 dark:text-slate-300">
+                        {payment.customerPhone || "Guest"}
+                      </td>
+                      <td className="px-5 py-4 capitalize font-medium text-slate-600 dark:text-slate-400">
+                        {payment.paymentMethod ? payment.paymentMethod.replace(/_/g, " ") : "UPI"}
+                      </td>
+                      <td className="px-5 py-4 capitalize text-slate-600 dark:text-slate-400 font-medium">
+                        {payment.providerName || "Razorpay"}
+                      </td>
+                      <td className="px-5 py-4 font-heading font-extrabold text-slate-900 dark:text-slate-100 text-sm">
+                        {formatAmount(payment.amount)}
+                      </td>
+                      <td className="px-5 py-4">
+                        <StatusBadge status={payment.paymentStatus} />
+                      </td>
+                      <td className="px-5 py-4 text-slate-500 font-medium whitespace-nowrap">
+                        {payment.createdAt
+                          ? new Date(payment.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) +
+                            " " +
+                            new Date(payment.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })
+                          : "N/A"}
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setSelectedPayment(payment)}
+                          className="gap-1 font-bold text-xs"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          <span>Details</span>
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Server-Side Pagination Controls */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 text-xs">
+          <span className="text-slate-500 dark:text-slate-400 font-semibold">
+            Page {page} of {totalPages} ({totalCount} total payments)
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      {/* Payment Details Drawer */}
       {selectedPayment && (
-        <VerificationModal
+        <PaymentDetailsDrawer
           payment={selectedPayment}
-          onClose={handleModalClose}
-          onVerified={() => { handleModalClose(); }}
-          onRejected={() => { handleModalClose(); }}
+          onClose={() => setSelectedPayment(null)}
+          onOpenOrder={handleOpenOrder}
         />
       )}
     </div>

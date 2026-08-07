@@ -48,15 +48,22 @@ export class RestaurantRepository {
     return this.findByPhoneColumn(phoneNumber, 'phone_number');
   }
 
-  public async upsertByPhoneNumber(name: string, phoneNumber: string): Promise<Restaurant> {
+  public async upsertByPhoneNumber(name: string, phoneNumber: string, email?: string): Promise<Restaurant> {
     const existing = await this.findByPhoneNumber(phoneNumber);
-    if (existing) return existing;
+    if (existing) {
+      if (email && !existing.email) {
+        await this.updateSetup(existing.id, { email });
+        existing.email = email;
+      }
+      return existing;
+    }
 
     const { data, error } = await this.client
       .from('restaurants')
       .insert({
         name,
         phone_number: phoneNumber,
+        email: email || null,
         is_active: true,
       })
       .select('*')

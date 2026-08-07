@@ -338,6 +338,9 @@ export class OrderRepository {
         quantity: item.quantity,
         unitPrice: Number(item.unit_price),
         totalPrice: Number(item.total_price),
+        notes: item.notes || item.instructions || undefined,
+        instructions: item.instructions || undefined,
+        customizations: item.customizations || undefined,
       }))
       : undefined;
 
@@ -403,6 +406,7 @@ export class OrderRepository {
       customerName: row.customer_name || row.receipt_snapshot?.customerName || row.customer?.name || null,
       customerContactPhone: row.customer_contact_phone || row.receipt_snapshot?.customerContactPhone || row.customer?.contact_phone || null,
       customerAddress: row.customer_address || row.customer?.address || null,
+      source: row.source || 'WhatsApp',
       items,
       payment,
     };

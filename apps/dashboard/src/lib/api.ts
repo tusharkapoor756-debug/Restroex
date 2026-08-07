@@ -9,8 +9,9 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
-interface RequestOptions extends RequestInit {
+export interface RequestOptions extends RequestInit {
   requireAuth?: boolean;
+  raw?: boolean;
 }
 
 export class ApiError extends Error {
@@ -55,10 +56,14 @@ async function fetchApi<T>(endpoint: string, options: RequestOptions = {}, retri
           window.location.href = "/login";
         }
       }
-      throw new ApiError(json.message || "An error occurred during the request.", response.status);
+      const errorMessage = json.error?.message || json.message || "An error occurred during the request.";
+      throw new ApiError(errorMessage, response.status);
     }
 
     // Backend responses are wrapped in { success: true, data: T }
+    if (options.raw) {
+      return json as T;
+    }
     return json.data as T;
   } catch (error) {
     if (error instanceof ApiError) {
@@ -75,6 +80,9 @@ async function fetchApi<T>(endpoint: string, options: RequestOptions = {}, retri
 export const api = {
   get: <T>(endpoint: string, options?: RequestOptions) => 
     fetchApi<T>(endpoint, { ...options, method: "GET" }),
+    
+  getRaw: <T>(endpoint: string, options?: RequestOptions) => 
+    fetchApi<T>(endpoint, { ...options, method: "GET", raw: true }),
     
   post: <T>(endpoint: string, body?: any, options?: RequestOptions) => 
     fetchApi<T>(endpoint, { ...options, method: "POST", body: body ? JSON.stringify(body) : undefined }),

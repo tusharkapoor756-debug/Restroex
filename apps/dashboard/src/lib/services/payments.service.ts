@@ -18,8 +18,38 @@ interface ScreenshotUrlResponse {
 }
 
 export class PaymentsService {
-  static async getPaymentsByRestaurant(restaurantId: string): Promise<Payment[]> {
-    return api.get<Payment[]>(`/payments/restaurant/${restaurantId}`);
+  static async getPaymentsByRestaurant(
+    restaurantId: string,
+    params?: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      search?: string;
+      sortOrder?: 'asc' | 'desc';
+    }
+  ): Promise<{ payments: Payment[]; pagination: { total: number; page: number; limit: number; totalPages: number } }> {
+    const query = new URLSearchParams();
+    if (params?.page) query.append("page", String(params.page));
+    if (params?.limit) query.append("limit", String(params.limit));
+    if (params?.status) query.append("status", params.status);
+    if (params?.search) query.append("search", params.search);
+    if (params?.sortOrder) query.append("sortOrder", params.sortOrder);
+
+    const queryString = query.toString() ? `?${query.toString()}` : "";
+    const rawRes = await api.getRaw<any>(`/payments/restaurant/${restaurantId}${queryString}`);
+    
+    const paymentsArray = Array.isArray(rawRes?.data) ? rawRes.data : [];
+    const pagination = rawRes?.pagination || {
+      total: paymentsArray.length,
+      page: params?.page || 1,
+      limit: params?.limit || 15,
+      totalPages: Math.ceil(paymentsArray.length / (params?.limit || 15)) || 1,
+    };
+
+    return {
+      payments: paymentsArray,
+      pagination,
+    };
   }
 
   static async getPayment(paymentId: string): Promise<Payment> {

@@ -43,6 +43,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [restaurantStatus, setRestaurantStatus] = useState<"open" | "busy" | "closed">("open");
   const [restaurantName, setRestaurantName] = useState("Restroex Outlet");
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
@@ -150,11 +151,53 @@ export default function DashboardShell({ children }: DashboardShellProps) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans flex flex-col lg:flex-row pb-16 lg:pb-0">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans flex flex-col md:flex-row pb-16 md:pb-0">
       
-      {/* 1. DESKTOP SIDEBAR (Fixed Left) */}
-      <aside className="hidden lg:flex w-64 shrink-0 flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900 p-5 sticky top-0 h-screen z-30">
-        <div>
+      {/* 1a. TABLET ICON-ONLY SIDEBAR (md: 768-1023px) */}
+      <aside className="hidden md:flex lg:hidden w-16 shrink-0 flex-col items-center justify-between border-r border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900 py-4 px-2 sticky top-0 h-screen z-30">
+        <div className="flex flex-col items-center gap-1 w-full">
+          <Link href="/dashboard" className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 font-heading font-extrabold text-sm text-white shadow-md shadow-brand-600/30 mb-4">
+            R
+          </Link>
+          {navItems.map((item) => {
+            const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                title={item.label}
+                className={`relative flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
+                  isActive
+                    ? "bg-brand-600 text-white shadow-sm"
+                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                }`}
+              >
+                <Icon className="h-5 w-5" />
+                {item.badge && (
+                  <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />
+                )}
+              </Link>
+            );
+          })}
+        </div>
+        <div className="flex flex-col items-center gap-2 w-full border-t border-slate-100 dark:border-slate-800 pt-3">
+          <Link href="/dashboard/whatsapp" title="WhatsApp Bot" className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
+            {wsStatus === "connected" ? <Wifi className="h-5 w-5 text-emerald-500" /> : <WifiOff className="h-5 w-5 text-red-500" />}
+          </Link>
+          <button
+            onClick={handleLogout}
+            title="Logout"
+            className="flex h-10 w-10 items-center justify-center rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-all"
+          >
+            <Power className="h-5 w-5" />
+          </button>
+        </div>
+      </aside>
+
+      {/* 1b. DESKTOP FULL SIDEBAR (lg: 1024px+) */}
+      <aside className="hidden lg:flex w-64 shrink-0 flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900 p-5 sticky top-0 h-screen overflow-y-auto z-30">
+        <div className="flex-1 overflow-y-auto pr-1 space-y-1">
           {/* Outlet Brand Header */}
           <Link href="/dashboard" className="flex items-center gap-3 px-2 mb-6">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 font-heading font-extrabold text-sm text-white shadow-md shadow-brand-600/30">
@@ -226,7 +269,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         </div>
 
         {/* Footer controls & Persistent WhatsApp Indicator */}
-        <div className="space-y-3 border-t border-slate-100 dark:border-slate-800/80 pt-4">
+        <div className="space-y-3 border-t border-slate-100 dark:border-slate-800/80 pt-4 mt-2 shrink-0">
           <Link
             href="/dashboard/whatsapp"
             className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-xs font-semibold"
@@ -252,7 +295,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
 
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all text-left"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-all text-left cursor-pointer border border-red-200/50 dark:border-red-900/40"
           >
             <Power className="h-4.5 w-4.5" />
             <span>Logout Account</span>
@@ -266,10 +309,10 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         {/* Persistent Top Bar */}
         <header className="h-16 border-b border-slate-200 dark:border-slate-800/80 px-4 sm:px-6 flex items-center justify-between shrink-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md sticky top-0 z-20">
           
-          {/* Mobile hamburger menu toggle */}
+          {/* Mobile hamburger menu toggle (hidden at md+ since tablet has icon sidebar) */}
           <button
             onClick={() => setMobileMenuOpen(true)}
-            className="lg:hidden p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="md:hidden p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
           >
             <Menu className="h-5 w-5" />
           </button>
@@ -353,9 +396,45 @@ export default function DashboardShell({ children }: DashboardShellProps) {
               )}
             </div>
 
-            {/* Staff Profile Avatar */}
-            <div className="h-9 w-9 rounded-xl bg-brand-100 dark:bg-brand-950 border border-brand-200 dark:border-brand-800 flex items-center justify-center text-xs font-extrabold text-brand-700 dark:text-brand-300">
-              ST
+            {/* Staff Profile Avatar with Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setIsProfileOpen(!isProfileOpen)}
+                className="h-9 w-9 rounded-xl bg-brand-100 dark:bg-brand-950 border border-brand-200 dark:border-brand-800 flex items-center justify-center text-xs font-extrabold text-brand-700 dark:text-brand-300 hover:ring-2 hover:ring-brand-500 transition cursor-pointer"
+                title="Account Menu"
+              >
+                ST
+              </button>
+
+              {isProfileOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setIsProfileOpen(false)} />
+                  <div className="absolute right-0 mt-2 w-48 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2 shadow-xl z-50 space-y-1 text-xs font-semibold">
+                    <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800">
+                      <span className="block font-bold text-slate-900 dark:text-slate-100 truncate">{restaurantName}</span>
+                      <span className="block text-[10px] text-slate-500 truncate">Store Admin</span>
+                    </div>
+                    <Link
+                      href="/dashboard/settings"
+                      onClick={() => setIsProfileOpen(false)}
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                    >
+                      <Settings className="h-4 w-4" />
+                      <span>Settings</span>
+                    </Link>
+                    <button
+                      onClick={() => {
+                        setIsProfileOpen(false);
+                        handleLogout();
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition text-left cursor-pointer"
+                    >
+                      <Power className="h-4 w-4" />
+                      <span>Logout Account</span>
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </header>
@@ -367,8 +446,8 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         </main>
       </div>
 
-      {/* 3. MOBILE FIRST BOTTOM TAB NAVIGATION BAR (Mandatory for Restaurant Counter Staff) */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 h-16 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center justify-around z-40 px-2 shadow-lg">
+      {/* 3. MOBILE ONLY BOTTOM TAB NAV (hidden at md+ since tablet has icon sidebar) */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 h-16 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center justify-around z-40 px-2 shadow-lg">
         {mobileBottomNavItems.map((item) => {
           const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
           const Icon = item.icon;
@@ -390,11 +469,11 @@ export default function DashboardShell({ children }: DashboardShellProps) {
         })}
       </nav>
 
-      {/* Mobile Drawer Overlay */}
+      {/* Mobile Drawer Overlay (mobile only) */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 flex lg:hidden">
+        <div className="fixed inset-0 z-50 flex md:hidden">
           <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)} />
-          <aside className="relative flex w-72 flex-col justify-between border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 z-50">
+          <aside className="relative flex max-w-[80vw] w-72 flex-col justify-between border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 z-50">
             <div>
               <div className="flex items-center justify-between mb-6">
                 <span className="font-heading font-extrabold text-base text-slate-900 dark:text-slate-100">

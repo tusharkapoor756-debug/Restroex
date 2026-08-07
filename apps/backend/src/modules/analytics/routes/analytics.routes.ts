@@ -6,6 +6,7 @@ import { restaurantSessionMiddleware } from '../../../middlewares/auth/restauran
 const router = Router();
 const controller = new AnalyticsController();
 
+router.get('/analytics/overview', restaurantSessionMiddleware, asyncHandler(controller.getAnalyticsOverview));
 router.get('/analytics/daily', restaurantSessionMiddleware, asyncHandler(controller.getDailyAnalytics));
 
 export default router;

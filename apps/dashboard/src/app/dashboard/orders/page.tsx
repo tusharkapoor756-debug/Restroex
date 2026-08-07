@@ -78,6 +78,11 @@ export default function KanbanLiveOrdersPage() {
   const [newOrderPulseId, setNewOrderPulseId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>("all");
   const [filterQuery, setFilterQuery] = useState<string>("");
+  // Cancel reason modal state
+  const [cancelTargetOrder, setCancelTargetOrder] = useState<KanbanOrder | null>(null);
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState<string>("");
+  const [isCancelling, setIsCancelling] = useState(false);
   const previousOrdersRef = useRef<string[]>([]);
   const audioContextRef = useRef<AudioContext | null>(null);
 
@@ -152,8 +157,23 @@ export default function KanbanLiveOrdersPage() {
       const data = await OrdersService.getActiveOrders();
       const now = Date.now();
 
+      /**
+       * Supabase returns timestamps WITHOUT the Z suffix
+       * e.g. "2026-08-05T02:17:58.969" instead of "2026-08-05T02:17:58.969Z"
+       * Without Z, JS Date() parses it as LOCAL time (IST = UTC+5:30),
+       * inflating minutesAgo by 330 minutes for IST users.
+       * Fix: append Z if no timezone info is present.
+       */
+      const toUtcMs = (ts: string): number => {
+        if (!ts) return now;
+        const normalized = ts.endsWith("Z") || ts.includes("+") || (ts.includes("-") && ts.lastIndexOf("-") > 7)
+          ? ts
+          : ts + "Z";
+        return new Date(normalized).getTime();
+      };
+
       const mapped: KanbanOrder[] = data.map((o) => {
-        const createdMs = new Date(o.createdAt).getTime();
+        const createdMs = toUtcMs(o.createdAt);
         const minutesAgo = Math.max(0, Math.floor((now - createdMs) / 60000));
         return {
           id: o.humanReadableId || o.id.substring(0, 8),
@@ -215,7 +235,7 @@ export default function KanbanLiveOrdersPage() {
   }, []);
 
   // Transition Order status handler with Optimistic UI
-  const handleTransition = async (backendId: string, orderId: string, nextStatus: WorkflowOrderStatus) => {
+  const handleTransition = async (backendId: string, orderId: string, nextStatus: WorkflowOrderStatus, cancellationReason?: string) => {
     // Optimistic state mutation
     setOrders((prev) =>
       prev.map((o) => (o.backendId === backendId ? { ...o, status: nextStatus } : o))
@@ -226,11 +246,37 @@ export default function KanbanLiveOrdersPage() {
     }
 
     try {
-      await OrdersService.transitionOrder(backendId, nextStatus);
+      await OrdersService.transitionOrder(backendId, nextStatus, cancellationReason);
       toast.success(`Order #${orderId} Updated`, `Status changed to ${nextStatus}`);
     } catch (err: any) {
       toast.error("Status Change Failed", err.message || "Failed to update order status");
       fetchOrders(false); // Revert on failure
+    }
+  };
+
+  // Opens the cancel reason modal (never cancels directly)
+  const openCancelModal = (order: KanbanOrder) => {
+    setCancelTargetOrder(order);
+    setCancelReason("");
+    setIsCancelModalOpen(true);
+  };
+
+  // Executes the cancel after reason is selected
+  const confirmCancel = async () => {
+    if (!cancelTargetOrder) return;
+    if (!cancelReason.trim()) {
+      toast.error("Reason Required", "Please select a cancellation reason.");
+      return;
+    }
+    setIsCancelling(true);
+    try {
+      await handleTransition(cancelTargetOrder.backendId, cancelTargetOrder.id, "cancelled", cancelReason);
+      setIsCancelModalOpen(false);
+      setIsSheetOpen(false);
+      toast.warning(`Order #${cancelTargetOrder.id} Cancelled`, `Reason: ${cancelReason}`);
+    } finally {
+      setIsCancelling(false);
+      setCancelTargetOrder(null);
     }
   };
 
@@ -250,6 +296,9 @@ export default function KanbanLiveOrdersPage() {
       });
     }
 
+    // Sort oldest-first so most urgent orders surface to the top
+    colOrders = [...colOrders].sort((a, b) => a.createdAtTimestamp - b.createdAtTimestamp);
+
     if (colOrders.length === 0) {
       return (
         <div className="flex flex-col items-center justify-center p-6 text-center rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/40 my-2">
@@ -262,6 +311,7 @@ export default function KanbanLiveOrdersPage() {
     return colOrders.map((order) => {
       const isPulsing = newOrderPulseId === order.backendId;
       const isPaid = order.status === "paid" || String(order.payment?.paymentStatus) === "verified" || String(order.payment?.paymentStatus) === "captured";
+      const isUrgent = order.minutesAgo >= 10; // 10+ min threshold for red alert
 
       return (
         <Card
@@ -272,9 +322,15 @@ export default function KanbanLiveOrdersPage() {
             setIsSheetOpen(true);
           }}
           className={`space-y-3 relative p-4 transition-all duration-200 border-l-4 ${
-            isPaid ? "border-l-emerald-500" : "border-l-amber-500"
+            isUrgent
+              ? "border-l-red-500"
+              : isPaid
+              ? "border-l-emerald-500"
+              : "border-l-amber-500"
           } ${
             isPulsing ? "ring-2 ring-brand-500 animate-pulse-glow" : ""
+          } ${
+            isUrgent ? "ring-1 ring-red-400/40 dark:ring-red-500/30" : ""
           }`}
         >
           {/* Card Header: Order ID, Dining/Takeaway Tag, Timer & Payment Status */}
@@ -291,9 +347,14 @@ export default function KanbanLiveOrdersPage() {
                 }`}>
                   {isPaid ? "PAID ✓" : "UNPAID"}
                 </span>
-                <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500 flex items-center gap-0.5">
-                  <Clock className="h-3 w-3" />
-                  {order.minutesAgo === 0 ? "Just now" : `${order.minutesAgo}m ago`}
+                {/* Time-pending badge: red + ⚠️ if 10+ min, neutral otherwise */}
+                <span className={`text-[11px] font-bold flex items-center gap-0.5 px-1.5 py-0.5 rounded-full ${
+                  isUrgent
+                    ? "bg-red-500/15 text-red-600 dark:text-red-400 border border-red-400/40 animate-pulse"
+                    : "text-slate-400 dark:text-slate-500"
+                }`}>
+                  {isUrgent ? <AlertCircle className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+                  {order.minutesAgo === 0 ? "Just now" : `${order.minutesAgo}m`}
                 </span>
               </div>
             </div>
@@ -403,6 +464,19 @@ export default function KanbanLiveOrdersPage() {
                 >
                   <CheckCircle2 className="h-3.5 w-3.5" />
                   <span>Serve</span>
+                </Button>
+              )}
+
+              {/* Cancel button — always visible on non-completed orders */}
+              {!["completed", "cancelled"].includes(order.status) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={(e) => { e.stopPropagation(); openCancelModal(order); }}
+                  className="h-7 w-7 p-0 text-red-500 hover:bg-red-500/10 rounded-lg"
+                  title="Cancel Order"
+                >
+                  <XCircle className="h-4 w-4" />
                 </Button>
               )}
             </div>
@@ -535,14 +609,15 @@ export default function KanbanLiveOrdersPage() {
               onAction={() => fetchOrders(true)}
             />
           ) : (
-            /* STATE 4: POPULATED STATE (Responsive Kanban Columns) */
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-start">
+            /* STATE 4: POPULATED STATE (Responsive Kanban — horizontal scroll on mobile, grid on desktop) */
+            <div className="w-full overflow-x-auto pb-4 lg:overflow-x-visible">
+              <div className="flex gap-4 lg:grid lg:grid-cols-5 items-start min-w-max lg:min-w-0">
               {KANBAN_COLUMNS.filter((col) => activeTab === "all" || activeTab === col.id).map((col) => {
                 const count = orders.filter((o) => col.statuses.includes(o.status)).length;
                 return (
                   <div
                     key={col.id}
-                    className="flex flex-col rounded-2xl bg-slate-100/70 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 p-3 space-y-3 min-h-[70vh]"
+                    className="flex flex-col rounded-2xl bg-slate-100/70 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 p-3 space-y-3 min-h-[70vh] w-72 lg:w-auto shrink-0 lg:shrink"
                   >
                     {/* Column Header */}
                     <div className="flex items-center justify-between px-1 pb-1">
@@ -561,6 +636,7 @@ export default function KanbanLiveOrdersPage() {
                   </div>
                 );
               })}
+              </div>
             </div>
           )}
         </>
@@ -676,20 +752,92 @@ export default function KanbanLiveOrdersPage() {
               >
                 Progress Order State →
               </Button>
-              <Button
-                variant="danger"
-                className="w-full text-xs"
-                onClick={() => {
-                  handleTransition(selectedOrder.backendId, selectedOrder.id, "cancelled");
-                  setIsSheetOpen(false);
-                }}
-              >
-                Cancel Order
-              </Button>
+              {!["completed", "cancelled"].includes(selectedOrder.status) && (
+                <Button
+                  variant="danger"
+                  className="w-full text-xs"
+                  onClick={() => openCancelModal(selectedOrder)}
+                >
+                  <XCircle className="h-4 w-4 mr-1" />
+                  Cancel Order
+                </Button>
+              )}
             </div>
           </div>
         )}
       </Sheet>
+
+      {/* ═══════════════════════════════════════════════════
+           CANCEL REASON MODAL
+           Staff must pick a reason before cancelling.
+           Reason is forwarded to customer via WhatsApp.
+      ═══════════════════════════════════════════════════ */}
+      <Modal
+        isOpen={isCancelModalOpen}
+        onClose={() => { setIsCancelModalOpen(false); setCancelTargetOrder(null); }}
+        title={`Cancel Order #${cancelTargetOrder?.id ?? ""}`}
+      >
+        <div className="space-y-5 pt-1">
+          {/* Warning Banner */}
+          <div className="flex items-start gap-3 p-4 rounded-2xl bg-red-500/10 border border-red-400/30">
+            <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-bold text-red-600 dark:text-red-400">This will cancel the order.</p>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                The customer will receive a WhatsApp message with your selected reason.
+              </p>
+            </div>
+          </div>
+
+          {/* Reason Selector */}
+          <div className="space-y-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Cancellation Reason <span className="text-red-500">*</span>
+            </label>
+            <div className="space-y-2">
+              {[
+                "Item out of stock",
+                "Kitchen is too busy",
+                "Restaurant closing soon",
+                "Customer requested cancellation",
+                "Incorrect order details",
+                "Other",
+              ].map((reason) => (
+                <button
+                  key={reason}
+                  onClick={() => setCancelReason(reason)}
+                  className={`w-full text-left px-4 py-3 rounded-xl text-sm font-semibold border transition-all ${
+                    cancelReason === reason
+                      ? "bg-red-500/10 border-red-400/60 text-red-600 dark:text-red-400 ring-1 ring-red-400/40"
+                      : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  {cancelReason === reason ? "✓ " : ""}{reason}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-3 pt-1">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => { setIsCancelModalOpen(false); setCancelTargetOrder(null); }}
+            >
+              Keep Order
+            </Button>
+            <Button
+              variant="danger"
+              className="flex-1 font-bold"
+              onClick={confirmCancel}
+              disabled={isCancelling || !cancelReason}
+            >
+              {isCancelling ? "Cancelling..." : "Confirm Cancel"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

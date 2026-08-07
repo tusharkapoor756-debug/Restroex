@@ -1,0 +1,42 @@
+{
+  "categories": [
+    {
+      "name": "HOT BREWS"
+    },
+    {
+      "name": "SANDWICHES"
+    }
+  ],
+  "items": [
+    {
+      "name": "Espresso",
+      "category": "HOT BREWS",
+      "basePrice": 120,
+      "variants": []
+    },
+    {
+      "name": "Cappuccino",
+      "category": "HOT BREWS",
+      "basePrice": 160,
+      "variants": []
+    },
+    {
+      "name": "Cafe Latte",
+      "category": "HOT BREWS",
+      "basePrice": 170,
+      "variants": []
+    },
+    {
+      "name": "Grilled Cheese Sandwich",
+      "category": "SANDWICHES",
+      "basePrice": 150,
+      "variants": []
+    },
+    {
+      "name": "Club Chicken Sandwich",
+      "category": "SANDWICHES",
+      "basePrice": 220,
+      "variants": []
+    }
+  ]
+}

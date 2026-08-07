@@ -11,6 +11,8 @@ import Skeleton from "../../../components/ui/Skeleton";
 import { EmptyState, ErrorState } from "../../../components/ui/StateViews";
 import { Modal } from "../../../components/ui/Modal";
 import { Input, Select } from "../../../components/ui/Input";
+import { MenuImportModal } from "../../../components/menu/MenuImportModal";
+import { FEATURE_FLAGS } from "../../../lib/feature-flags";
 import {
   Search,
   Plus,
@@ -33,7 +35,8 @@ import {
   Zap,
   Tag,
   FolderPlus,
-  FolderEdit
+  FolderEdit,
+  Upload
 } from "lucide-react";
 
 export default function ProductionMenuCatalogPage() {
@@ -75,6 +78,7 @@ export default function ProductionMenuCatalogPage() {
   });
 
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const loadMenuData = useCallback(async () => {
     setIsLoading(true);
@@ -258,7 +262,21 @@ export default function ProductionMenuCatalogPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* FEATURE_FLAGS.MENU_IMPORT — Menu Import button hidden for MVP launch.
+               Set FEATURE_FLAGS.MENU_IMPORT = true in feature-flags.ts to re-enable. */}
+          {FEATURE_FLAGS.MENU_IMPORT && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsImportModalOpen(true)}
+              className="gap-2 font-semibold text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800/80 hover:bg-purple-50 dark:hover:bg-purple-950/50"
+            >
+              <Upload className="h-4 w-4" />
+              <span>Import Menu (AI/PDF)</span>
+            </Button>
+          )}
+
           <Button
             variant="outline"
             size="sm"
@@ -313,8 +331,8 @@ export default function ProductionMenuCatalogPage() {
       </div>
 
       {/* Category Tabs Row with FIX 2 Edit/Delete Actions */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm">
-        <div className="flex items-center gap-2 overflow-x-auto max-w-full pb-1 sm:pb-0">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm w-full">
+        <div className="flex items-center gap-2 overflow-x-auto w-full max-w-full pb-1 sm:pb-0">
           <button
             onClick={() => setSelectedCategoryId(null)}
             className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
@@ -747,6 +765,19 @@ export default function ProductionMenuCatalogPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Enterprise AI / PDF Menu Import Modal — hidden for MVP launch */}
+      {FEATURE_FLAGS.MENU_IMPORT && (
+        <MenuImportModal
+          isOpen={isImportModalOpen}
+          onClose={() => setIsImportModalOpen(false)}
+          onSuccess={() => {
+            setIsImportModalOpen(false);
+            loadMenuData();
+            toast.success("Menu Import Complete", "Menu items & categories imported successfully.");
+          }}
+        />
+      )}
     </div>
   );
 }

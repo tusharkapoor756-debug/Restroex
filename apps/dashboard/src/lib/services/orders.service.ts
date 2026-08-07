@@ -11,10 +11,15 @@ export class OrdersService {
 
   /**
    * Transitions the status of a specific order.
+   * For cancellations, an optional human-readable reason can be provided.
+   * The reason will be sent to the customer via WhatsApp.
    */
-  static async transitionOrder(orderId: string, status: WorkflowOrderStatus): Promise<Order> {
-    return api.patch<Order>(`/orders/${orderId}/status`, { status });
+  static async transitionOrder(orderId: string, status: WorkflowOrderStatus, cancellationReason?: string): Promise<Order> {
+    const body: Record<string, unknown> = { status };
+    if (cancellationReason) body.cancellationReason = cancellationReason;
+    return api.patch<Order>(`/orders/${orderId}/status`, body);
   }
+
 
   /**
    * Retrieves paginated order history with search and status filters.
@@ -36,12 +41,28 @@ export class OrdersService {
     if (params?.endDate) query.append("endDate", params.endDate);
 
     const queryString = query.toString() ? `?${query.toString()}` : "";
-    const res = await api.get<any>(`/orders/history${queryString}`);
-    // api.get<any> unwraps json.data directly
-    const ordersArray = Array.isArray(res) ? res : (res?.data || []);
+    const rawRes = await api.getRaw<any>(`/orders/history${queryString}`);
+    
+    const ordersArray = Array.isArray(rawRes?.data) ? rawRes.data : [];
+    const pagination = rawRes?.pagination || {
+      total: ordersArray.length,
+      page: params?.page || 1,
+      limit: params?.limit || 20,
+      totalPages: Math.ceil(ordersArray.length / (params?.limit || 20)) || 1
+    };
+
     return {
       orders: ordersArray,
-      pagination: res?.pagination || { total: ordersArray.length, page: 1, limit: 20, totalPages: 1 },
+      pagination,
     };
+  }
+
+  /**
+   * Fetches a single order by its internal UUID.
+   * Used by the Payments page to deep-link View Order → auto-open the Order Details drawer.
+   */
+  static async getOrderById(orderId: string): Promise<Order> {
+    const rawRes = await api.getRaw<any>(`/orders/${orderId}`);
+    return rawRes?.data ?? rawRes;
   }
 }

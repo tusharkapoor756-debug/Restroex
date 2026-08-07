@@ -1,11 +1,12 @@
 // apps/backend/src/modules/orders/tests/receipt-verification.ts
-import { ReceiptFormatterService } from '../services/receipt-formatter.service';
+import { ReceiptFormatter } from '../services/receipt-formatter.service';
 import { Order } from '../types/order.types';
 
 function runReceiptVerification() {
   console.log('🧪 Starting Billing Identity and Receipt Formatter Tests...');
 
-  const formatter = new ReceiptFormatterService();
+  const formatter = new ReceiptFormatter();
+
 
   // Mock Order with full receipt snapshot metadata
   const mockOrder: Order = {
