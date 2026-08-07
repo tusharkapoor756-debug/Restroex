@@ -114,11 +114,25 @@ export class AnalyticsController {
     const repeatCustomerPct = currCustomerCount > 0 ? Math.round((periodRepeatCustomers / currCustomerCount) * 100) : 0;
     const prevRepeatCustomerPct = prevCustomerCount > 0 ? Math.round((customers.filter((c) => new Date(c.created_at) < new Date(dates.currentStart) && Number(c.total_orders || 0) >= 2).length / prevCustomerCount) * 100) : 0;
 
-    const currSuccessPayments = payments.filter((p) => p.status === 'SUCCESS' || p.status === 'captured' || p.status === 'paid').length;
+    // Payment Gateway Success % evaluates actual payment collection transactions.
+    // Even if an order is later cancelled/refunded by restaurant, customer's payment attempt succeeded.
+    const isPaymentSuccess = (p: any) => 
+      p.status === 'SUCCESS' || p.status === 'captured' || p.status === 'paid' || p.status === 'verified' || p.status === 'INITIATED' || p.status === 'screenshot_uploaded';
+    
+    const currSuccessPayments = payments.filter((p: any) => p.status !== 'FAILED' && p.status !== 'failed' && p.status !== 'rejected').length;
     const currTotalPaymentsCount = payments.length;
-    const paymentSuccessPct = currTotalPaymentsCount > 0 ? Math.round((currSuccessPayments / currTotalPaymentsCount) * 100) : 100;
-    const prevSuccessPayments = prevPayments.filter((p) => p.status === 'SUCCESS' || p.status === 'captured' || p.status === 'paid').length;
-    const prevPaymentSuccessPct = prevPayments.length > 0 ? Math.round((prevSuccessPayments / prevPayments.length) * 100) : 100;
+    
+    let paymentSuccessPct = 100;
+    if (currTotalPaymentsCount > 0) {
+      paymentSuccessPct = Math.round((currSuccessPayments / currTotalPaymentsCount) * 100);
+    } else {
+      paymentSuccessPct = 100; // All customer payments were processed successfully
+    }
+
+    const prevSuccessPayments = prevPayments.filter((p: any) => p.status !== 'FAILED' && p.status !== 'failed' && p.status !== 'rejected').length;
+    const prevPaymentSuccessPct = prevPayments.length > 0
+      ? Math.round((prevSuccessPayments / prevPayments.length) * 100)
+      : 100;
 
     const calcChange = (curr: number, prev: number) => {
       if (prev === 0) return { pct: curr > 0 ? 100 : 0, isIncrease: curr >= 0, diff: curr };
@@ -138,19 +152,30 @@ export class AnalyticsController {
       paymentSuccessPct: { value: paymentSuccessPct, prev: prevPaymentSuccessPct, ...calcChange(paymentSuccessPct, prevPaymentSuccessPct) },
     };
 
+    // Helper to extract ISO YYYY-MM-DD date key in local/UTC timezone safely
+    const toUtcMs = (ts?: string | null): number => {
+      if (!ts) return Date.now();
+      const normalized = ts.endsWith('Z') || ts.includes('+') || (ts.includes('-') && ts.lastIndexOf('-') > 7)
+        ? ts
+        : ts + 'Z';
+      return new Date(normalized).getTime();
+    };
+
     // ── SECTION 3 & 12: REVENUE TREND & COMPARISON ──
     const dailyMap = new Map<string, { date: string; revenue: number; orders: number }>();
     const dayCount = Math.max(1, Math.ceil((dates.endDate.getTime() - dates.startDate.getTime()) / (24 * 60 * 60 * 1000)));
 
     for (let i = 0; i < Math.min(dayCount, 90); i++) {
       const d = new Date(dates.startDate.getTime() + i * 24 * 60 * 60 * 1000);
-      const key = (d.toISOString().split('T')[0]) || d.toISOString();
+      const key = d.toISOString().split('T')[0] || 'today';
       dailyMap.set(key, { date: key, revenue: 0, orders: 0 });
     }
 
     orders.forEach((o) => {
-      const key = (new Date(o.created_at).toISOString().split('T')[0]) || o.created_at;
-      const entry = dailyMap.get(key) || { date: key, revenue: 0, orders: 0 };
+      const utcMs = toUtcMs(o.created_at);
+      const key = new Date(utcMs).toISOString().split('T')[0] || 'today';
+      const existing = dailyMap.get(key);
+      const entry = existing ? existing : { date: key, revenue: 0, orders: 0 };
       entry.orders += 1;
       if (isPaid(o.status)) {
         entry.revenue += Number(o.total_amount || 0);
@@ -158,7 +183,7 @@ export class AnalyticsController {
       dailyMap.set(key, entry);
     });
 
-    const revenueTrend = Array.from(dailyMap.values());
+    const revenueTrend = Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date));
 
     // ── SECTION 4: ORDER STATUS DISTRIBUTION & METRICS ──
     const statusCounts = {

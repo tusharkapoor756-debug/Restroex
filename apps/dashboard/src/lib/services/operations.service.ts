@@ -45,7 +45,7 @@ export interface ActiveOrderItem {
   createdAt: string;
   elapsedMins: number;
   isDelayed: boolean;
-  items: Array<{ name: string; quantity: number; price: number }>;
+  items: Array<{ name: string; variantName?: string; quantity: number; price: number }>;
 }
 
 export interface KitchenQueue {

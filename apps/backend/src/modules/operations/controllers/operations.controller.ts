@@ -17,9 +17,12 @@ export class OperationsController {
   public getOperationsHub = async (req: Request, res: Response): Promise<void> => {
     const restaurantId = String((req as any).restaurantId || '');
 
-    // Today's Start Boundary in UTC (00:00:00.000Z)
+    // Today's Start Boundary formatted as explicit UTC ISO string (e.g. 2026-08-07T00:00:00.000Z)
     const now = new Date();
-    const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0)).toISOString();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const todayStart = `${yyyy}-${mm}-${dd}T00:00:00.000Z`;
 
     // 1. Parallel Database & Infrastructure State Queries
     const [
@@ -34,10 +37,10 @@ export class OperationsController {
       this.client.from('restaurants').select('id, name, is_active, settings').eq('id', restaurantId).maybeSingle(),
       whatsappProviderFactory.getProviderForRestaurant(restaurantId).catch(() => null),
       this.client.from('orders').select('*, items:order_items(*)').eq('restaurant_id', restaurantId).gte('created_at', todayStart),
-      this.client.from('orders').select('*, items:order_items(*)').eq('restaurant_id', restaurantId).not('status', 'in', '("completed","cancelled")').order('created_at', { ascending: true }),
+      this.client.from('orders').select('*, items:order_items(*)').eq('restaurant_id', restaurantId).in('status', ['checkout_pending', 'payment_pending', 'paid', 'accepted', 'preparing', 'ready']).order('created_at', { ascending: true }),
       this.client.from('payments').select('*').eq('restaurant_id', restaurantId).gte('created_at', todayStart),
       this.client.from('customers').select('*').eq('restaurant_id', restaurantId).eq('is_merged', false).gte('created_at', todayStart),
-      this.client.from('whatsapp_conversations').select('*').eq('restaurant_id', restaurantId),
+      this.client.from('conversation_sessions').select('*').eq('restaurant_id', restaurantId),
     ]);
 
     // System Health Checks
@@ -76,19 +79,20 @@ export class OperationsController {
 
     // ── SECTION 2: TODAY'S LIVE KPIS ──
     const todayOrders = todayOrdersRes.data || [];
-    const isPaid = (s: string) => ['paid', 'completed', 'accepted', 'preparing', 'ready'].includes(s);
+    // Only count completed, paid, or ready/preparing orders that are finalized/active as paid revenue
+    const isPaid = (s: string) => ['paid', 'completed', 'ready'].includes(s);
 
     const todayPaidOrders = todayOrders.filter((o) => isPaid(o.status));
     const todayRevenue = todayPaidOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
 
-    const pendingOrdersCount = todayOrders.filter((o) => o.status === 'checkout_pending' || o.status === 'created' || o.status === 'accepted').length;
-    const preparingOrdersCount = todayOrders.filter((o) => o.status === 'preparing').length;
+    const pendingOrdersCount = todayOrders.filter((o) => o.status === 'checkout_pending' || o.status === 'created' || o.status === 'paid' || o.status === 'payment_pending').length;
+    const preparingOrdersCount = todayOrders.filter((o) => o.status === 'preparing' || o.status === 'accepted').length;
     const readyOrdersCount = todayOrders.filter((o) => o.status === 'ready').length;
     const cancelledOrdersCount = todayOrders.filter((o) => o.status === 'cancelled').length;
-    const completedOrdersCount = todayOrders.filter((o) => o.status === 'completed' || o.status === 'paid').length;
+    const completedOrdersCount = todayOrders.filter((o) => o.status === 'completed').length;
 
     const conversations = conversationsRes.data || [];
-    const activeConversationsCount = conversations.filter((c) => c.status === 'active' || new Date(c.updated_at) >= new Date(todayStart)).length;
+    const activeConversationsCount = conversations.filter((c) => new Date(c.last_interaction_at || c.updated_at || c.created_at) >= new Date(todayStart)).length;
 
     const todayKpis = {
       todayRevenue,
@@ -104,8 +108,32 @@ export class OperationsController {
     // ── SECTION 3: NEEDS IMMEDIATE ATTENTION (PROBLEM DETECTOR) ──
     const immediateAttention: Array<{ id: string; severity: 'critical' | 'warning'; title: string; message: string; actionLabel?: string; actionTarget?: string }> = [];
 
+    // Helper to safely parse ISO timestamp strings from Supabase DB into UTC epoch milliseconds.
+    // Supabase string timestamps (e.g. "2026-08-07T02:40:00") lack 'Z' suffix, causing JS Date() 
+    // to interpret them in local runtime time (IST +5:30), resulting in a +330m offset bug.
+    const toUtcMs = (ts?: string | null): number | null => {
+      if (!ts) return null;
+      const normalized = ts.endsWith('Z') || ts.includes('+') || (ts.includes('-') && ts.lastIndexOf('-') > 7)
+        ? ts
+        : ts + 'Z';
+      return new Date(normalized).getTime();
+    };
+
     // Detector 1: Delayed Cooking Orders (> 20 mins in preparing)
-    const delayedPreparing = (activeOrdersRes.data || []).filter((o) => o.status === 'preparing' && (now.getTime() - new Date(o.created_at).getTime()) > 20 * 60 * 1000);
+    // Uses dedicated preparing_started_at timestamp to calculate exact cooking duration
+    const getPrepStartMs = (o: any): number => {
+      const prepStart = toUtcMs(o.preparing_started_at) || toUtcMs(o.accepted_at);
+      if (prepStart) return prepStart;
+      
+      const createdMs = toUtcMs(o.created_at) || now.getTime();
+      const todayStartMs = new Date(todayStart).getTime();
+      return createdMs >= todayStartMs ? createdMs : now.getTime();
+    };
+
+    const delayedPreparing = (activeOrdersRes.data || []).filter((o) => 
+      (o.status === 'preparing' || o.status === 'accepted') && 
+      (now.getTime() - getPrepStartMs(o)) > 20 * 60 * 1000
+    );
     if (delayedPreparing.length > 0) {
       immediateAttention.push({
         id: 'delayed_orders',
@@ -117,8 +145,8 @@ export class OperationsController {
       });
     }
 
-    // Detector 2: Pending Acceptance Backlog (> 5 mins in checkout_pending/accepted)
-    const stuckPending = (activeOrdersRes.data || []).filter((o) => (o.status === 'checkout_pending' || o.status === 'accepted') && (now.getTime() - new Date(o.created_at).getTime()) > 5 * 60 * 1000);
+    // Detector 2: Pending Acceptance Backlog (> 5 mins in checkout_pending/paid/payment_pending)
+    const stuckPending = (activeOrdersRes.data || []).filter((o) => (o.status === 'checkout_pending' || o.status === 'payment_pending' || o.status === 'paid') && (now.getTime() - new Date(o.created_at).getTime()) > 5 * 60 * 1000);
     if (stuckPending.length > 0) {
       immediateAttention.push({
         id: 'stuck_pending',
@@ -179,7 +207,9 @@ export class OperationsController {
 
     // ── SECTION 4 & 5: LIVE ORDER QUEUE & KITCHEN KDS QUEUES ──
     const activeOrders = (activeOrdersRes.data || []).map((o) => {
-      const elapsedMins = Math.floor((now.getTime() - new Date(o.created_at).getTime()) / (60 * 1000));
+      // Calculate elapsed cooking minutes strictly from preparing_started_at
+      const prepStart = getPrepStartMs(o);
+      const elapsedMins = Math.max(0, Math.floor((now.getTime() - prepStart) / (60 * 1000)));
       return {
         id: o.id,
         humanReadableId: o.human_readable_id || o.id.substring(0, 8),
@@ -189,9 +219,10 @@ export class OperationsController {
         totalAmount: Number(o.total_amount || 0),
         createdAt: o.created_at,
         elapsedMins,
-        isDelayed: o.status === 'preparing' && elapsedMins > 20,
+        isDelayed: (o.status === 'preparing' || o.status === 'accepted') && elapsedMins > 20,
         items: (o.items || []).map((itm: any) => ({
           name: itm.item_name_snapshot || itm.name || 'Menu Item',
+          variantName: itm.variant_name_snapshot || undefined,
           quantity: Number(itm.quantity || 1),
           price: Number(itm.total_price || itm.unit_price || 0),
         })),
@@ -205,10 +236,13 @@ export class OperationsController {
     };
 
     // ── SECTION 6: RECENT ACTIVITY TIMELINE ──
-    const recentOrdersForFeed = [...todayOrders].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 8);
+    const recentOrdersForFeed = [...todayOrders].sort((a, b) => (toUtcMs(b.created_at) || 0) - (toUtcMs(a.created_at) || 0)).slice(0, 8);
     const recentActivityFeed = recentOrdersForFeed.map((o) => {
       const orderId = o.human_readable_id || o.id.substring(0, 8);
-      const timeStr = new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const utcMs = toUtcMs(o.created_at);
+      const timeStr = utcMs
+        ? new Date(utcMs).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }).toLowerCase()
+        : new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       return {
         id: o.id,
         time: timeStr,
@@ -266,13 +300,18 @@ export class OperationsController {
 
     // ── SECTION 10: TODAY'S PAYMENT SNAPSHOT ──
     const paymentSnapshotByGateway: Record<string, { collected: number; pending: number; failed: number }> = {};
+    const paidOrderIds = new Set(todayOrders.filter((o) => isPaid(o.status)).map((o) => o.id));
+
     todayPayments.forEach((p) => {
       const provider = p.payment_provider || 'manual_upi';
       const current = paymentSnapshotByGateway[provider] || { collected: 0, pending: 0, failed: 0 };
       const amt = Number(p.amount || 0);
-      if (p.status === 'SUCCESS' || p.status === 'captured' || p.status === 'paid') {
+      const isPaymentSuccess = p.status === 'SUCCESS' || p.status === 'captured' || p.status === 'paid' || p.status === 'verified';
+      const isLinkedOrderPaid = p.order_id && paidOrderIds.has(p.order_id);
+
+      if (isPaymentSuccess || isLinkedOrderPaid) {
         current.collected += amt;
-      } else if (p.status === 'FAILED' || p.status === 'failed') {
+      } else if (p.status === 'FAILED' || p.status === 'failed' || p.status === 'rejected') {
         current.failed += amt;
       } else {
         current.pending += amt;
@@ -290,7 +329,7 @@ export class OperationsController {
       todayReturningCustomers: todayRepeatCustomersCount,
     };
 
-    res.status(200).json({
+    const responsePayload = {
       success: true,
       data: {
         timestamp: now.toISOString(),
@@ -305,6 +344,10 @@ export class OperationsController {
         paymentSnapshotByGateway,
         customerSnapshot,
       },
-    });
+    };
+
+    console.log('[RUNTIME VERIFICATION] GET /api/v1/operations/hub response:', JSON.stringify(responsePayload, null, 2));
+
+    res.status(200).json(responsePayload);
   };
 }

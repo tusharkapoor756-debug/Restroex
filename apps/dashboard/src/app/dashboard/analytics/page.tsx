@@ -41,6 +41,8 @@ import {
   HelpCircle
 } from "lucide-react";
 
+import { Modal, Sheet } from "../../../components/ui/Modal";
+
 export default function ProductionAnalyticsPage() {
   const [period, setPeriod] = useState<"today" | "yesterday" | "7d" | "30d" | "90d" | "custom">("7d");
   const [customStart, setCustomStart] = useState("");
@@ -50,9 +52,9 @@ export default function ProductionAnalyticsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
 
-  // Menu Performance Matrix Tab & Sorting State
+  // Menu Performance Matrix Tab & Selected Item Drawer State
   const [menuTab, setMenuTab] = useState<"topSelling" | "highestRevenue" | "leastSelling" | "neverOrdered">("topSelling");
-  const [menuSortBy, setMenuSortBy] = useState<"revenue" | "quantity" | "orders" | "name">("revenue");
+  const [selectedDish, setSelectedDish] = useState<MenuPerformanceItem | null>(null);
 
   const fetchAnalytics = useCallback(async () => {
     setIsLoading(true);
@@ -422,27 +424,39 @@ export default function ProductionAnalyticsPage() {
                 <div className="text-center py-12 text-xs text-slate-500 font-semibold">No sales data recorded in this period.</div>
               ) : (
                 <div className="space-y-3">
-                  <div className="h-48 flex items-end gap-1.5 pt-4 px-2 overflow-x-auto">
+                  <div className="h-56 flex items-end gap-3 pt-8 pb-1 px-3 overflow-x-auto">
                     {(() => {
                       const maxRev = Math.max(...data.revenueTrend.map((r) => r.revenue), 1);
                       return data.revenueTrend.map((point) => {
-                        const heightPct = Math.max(8, Math.round((point.revenue / maxRev) * 100));
+                        const heightPct = point.revenue > 0 ? Math.max(18, Math.round((point.revenue / maxRev) * 100)) : 6;
                         return (
-                          <div key={point.date} className="flex-1 min-w-[20px] flex flex-col items-center gap-1 group relative">
+                          <div key={point.date} className="flex-1 min-w-[36px] h-full flex flex-col items-center justify-end gap-1.5 group relative">
                             {/* Hover Tooltip */}
-                            <div className="absolute bottom-full mb-2 hidden group-hover:flex flex-col items-center bg-slate-900 text-white text-[10px] p-2 rounded-xl shadow-xl z-20 whitespace-nowrap pointer-events-none">
-                              <span className="font-bold">{point.date}</span>
-                              <span>Revenue: {formatCurrency(point.revenue)}</span>
-                              <span>Orders: {point.orders}</span>
+                            <div className="absolute bottom-full mb-2 hidden group-hover:flex flex-col items-center bg-slate-900 text-white text-[10px] p-2 rounded-xl shadow-2xl z-30 whitespace-nowrap pointer-events-none">
+                              <span className="font-bold text-slate-200">{point.date}</span>
+                              <span className="text-emerald-400 font-bold">Revenue: {formatCurrency(point.revenue)}</span>
+                              <span className="text-brand-300 font-semibold">Total Orders: {point.orders}</span>
                             </div>
 
-                            <div className="w-full bg-brand-500/20 dark:bg-brand-500/10 rounded-t-lg overflow-hidden flex items-end h-full">
+                            {/* Direct Amount Tag above bar (Standardized to Revenue ₹) */}
+                            <span className="text-[10px] font-mono font-extrabold text-slate-700 dark:text-slate-300 truncate w-full text-center">
+                              {`₹${point.revenue}`}
+                            </span>
+
+                            {/* Bar Container */}
+                            <div className="w-full max-w-[26px] h-36 bg-slate-100 dark:bg-slate-800/40 rounded-t-xl overflow-hidden flex items-end p-0.5 border border-slate-200/50 dark:border-slate-800">
                               <div
-                                className="w-full bg-brand-600 dark:bg-brand-500 rounded-t-lg transition-all duration-300 group-hover:bg-brand-400"
+                                className={`w-full rounded-t-lg transition-all duration-300 ${
+                                  point.revenue > 0
+                                    ? "bg-gradient-to-t from-brand-600 to-indigo-500 dark:from-brand-600 dark:to-indigo-400 group-hover:brightness-110 shadow-lg"
+                                    : "bg-slate-300 dark:bg-slate-700/60"
+                                }`}
                                 style={{ height: `${heightPct}%` }}
                               />
                             </div>
-                            <span className="text-[9px] font-mono text-slate-400 truncate w-full text-center">
+
+                            {/* Date Label */}
+                            <span className="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400 truncate w-full text-center">
                               {point.date.slice(5)}
                             </span>
                           </div>
@@ -557,10 +571,16 @@ export default function ProductionAnalyticsPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {data.menuPerformance[menuTab].map((item, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50">
+                      <tr
+                        key={idx}
+                        onClick={() => setSelectedDish(item)}
+                        className="hover:bg-brand-50/60 dark:hover:bg-brand-950/20 cursor-pointer transition-colors group"
+                      >
                         <td className="py-3 px-3 font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                           <span className="text-slate-400 font-mono text-[11px]">#{idx + 1}</span>
-                          <span>{item.name}</span>
+                          <span className="group-hover:text-brand-600 dark:group-hover:text-brand-400 underline-offset-2 group-hover:underline">
+                            {item.name}
+                          </span>
                         </td>
                         <td className="py-3 px-3 font-semibold">{item.quantity} units</td>
                         <td className="py-3 px-3 font-heading font-extrabold text-brand-600 dark:text-brand-400">{formatCurrency(item.revenue)}</td>
@@ -736,6 +756,85 @@ export default function ProductionAnalyticsPage() {
           </div>
         </>
       ) : null}
+
+      {/* ── DISH PERFORMANCE METRICS DETAIL DRAWER ── */}
+      <Sheet
+        isOpen={selectedDish !== null}
+        onClose={() => setSelectedDish(null)}
+        title={
+          <div className="flex items-center gap-2">
+            <Utensils className="h-5 w-5 text-brand-600 dark:text-brand-400" />
+            <span>Dish Analytics Breakdown</span>
+          </div>
+        }
+      >
+        {selectedDish && (
+          <div className="space-y-6 text-xs">
+            {/* Header Info Banner */}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-brand-500/10 via-brand-500/5 to-transparent border border-brand-500/20 space-y-1">
+              <span className="text-[10px] font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wider block">Menu Item</span>
+              <h2 className="font-heading text-xl font-extrabold text-slate-900 dark:text-slate-100">{selectedDish.name}</h2>
+              <span className="text-slate-500 block font-medium">Selected Timeframe Metrics ({period.toUpperCase()})</span>
+            </div>
+
+            {/* KPI Cards Grid */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">Total Revenue</span>
+                <span className="font-heading font-extrabold text-brand-600 dark:text-brand-400 text-lg block">
+                  {formatCurrency(selectedDish.revenue)}
+                </span>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">Units Sold</span>
+                <span className="font-heading font-extrabold text-slate-900 dark:text-slate-100 text-lg block">
+                  {selectedDish.quantity} units
+                </span>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">Total Orders</span>
+                <span className="font-heading font-extrabold text-slate-900 dark:text-slate-100 text-lg block">
+                  {selectedDish.ordersCount} orders
+                </span>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">Avg Qty / Order</span>
+                <span className="font-heading font-extrabold text-slate-900 dark:text-slate-100 text-lg block">
+                  {selectedDish.avgQtyPerOrder}
+                </span>
+              </div>
+            </div>
+
+            {/* Revenue Contribution Progress */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 space-y-2">
+              <div className="flex justify-between items-center font-bold">
+                <span className="text-slate-700 dark:text-slate-300">Revenue Contribution %</span>
+                <span className="text-brand-600 dark:text-brand-400 text-sm font-extrabold">{selectedDish.revenueContributionPct}%</span>
+              </div>
+              <div className="h-3 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-brand-600 to-indigo-500 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, selectedDish.revenueContributionPct)}%` }}
+                />
+              </div>
+              <span className="text-[11px] text-slate-400 block">
+                This item accounts for {selectedDish.revenueContributionPct}% of total restaurant sales in this period.
+              </span>
+            </div>
+
+            <Button
+              variant="outline"
+              onClick={() => setSelectedDish(null)}
+              className="w-full font-bold"
+            >
+              Close Details
+            </Button>
+          </div>
+        )}
+      </Sheet>
     </div>
   );
 }

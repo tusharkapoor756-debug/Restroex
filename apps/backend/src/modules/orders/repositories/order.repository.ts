@@ -306,6 +306,11 @@ export class OrderRepository {
       payload.paid_at = now;
     } else if (status === 'accepted') {
       payload.accepted_at = now;
+      payload.preparing_started_at = now;
+    } else if (status === 'preparing') {
+      payload.preparing_started_at = now;
+    } else if (status === 'ready') {
+      payload.ready_at = now;
     } else if (status === 'completed') {
       payload.completed_at = now;
     } else if (status === 'cancelled') {

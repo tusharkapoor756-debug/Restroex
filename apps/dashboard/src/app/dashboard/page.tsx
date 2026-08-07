@@ -51,11 +51,99 @@ export default function ProductionOperationsHubPage() {
   const [isError, setIsError] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
 
+  const previousOrdersRef = React.useRef<string[]>([]);
+  const audioContextRef = React.useRef<AudioContext | null>(null);
+
+  // Initialize & unlock Web Audio API on first user gesture
+  useEffect(() => {
+    const unlockAudio = () => {
+      try {
+        if (!audioContextRef.current) {
+          audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        }
+        if (audioContextRef.current.state === "suspended") {
+          audioContextRef.current.resume();
+        }
+      } catch (err) {
+        console.warn("[Restroex Audio] Could not unlock AudioContext:", err);
+      }
+    };
+
+    window.addEventListener("click", unlockAudio, { once: true });
+    window.addEventListener("touchstart", unlockAudio, { once: true });
+    return () => {
+      window.removeEventListener("click", unlockAudio);
+      window.removeEventListener("touchstart", unlockAudio);
+    };
+  }, []);
+
+  // Guaranteed Audio Siren Sound Player (HTML5 Audio + Web Audio API Synthesis)
+  const playAlertChime = useCallback(() => {
+    // Method 1: HTML5 Audio Notification Element Fallback
+    try {
+      const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3");
+      audio.volume = 1.0;
+      audio.play().catch((err) => {
+        console.warn("[Restroex Audio] HTML5 Audio play deferred:", err);
+      });
+    } catch (e) {
+      console.warn("[Restroex Audio] HTML5 Audio init error:", e);
+    }
+
+    // Method 2: Web Audio API Synthesized Siren
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = audioContextRef.current || new AudioCtx();
+        if (ctx.state === "suspended") {
+          ctx.resume();
+        }
+
+        const playBeep = (freq1: number, freq2: number, startTime: number, duration: number) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "sawtooth";
+          osc.frequency.setValueAtTime(freq1, startTime);
+          osc.frequency.exponentialRampToValueAtTime(freq2, startTime + duration);
+
+          gain.gain.setValueAtTime(1.0, startTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(startTime);
+          osc.stop(startTime + duration);
+        };
+
+        const now = ctx.currentTime;
+        playBeep(659.25, 880, now, 0.3);
+        playBeep(659.25, 880, now + 0.35, 0.3);
+        playBeep(880, 1174.66, now + 0.7, 0.5);
+      }
+    } catch (e) {
+      console.warn("[Restroex Audio] Web Audio siren error:", e);
+    }
+  }, []);
+
   const fetchHubData = useCallback(async () => {
     setIsLoading(true);
     setIsError(false);
     try {
       const res = await OperationsService.getHubData();
+      
+      // ── CONTINUOUS ALARM LOOP FOR UNACCEPTED NEW ORDERS ──
+      if (res && res.activeOrders) {
+        const unacceptedOrders = res.activeOrders.filter((o) =>
+          ["checkout_pending", "paid", "payment_pending", "cart_active"].includes(o.status)
+        );
+
+        if (unacceptedOrders.length > 0) {
+          playAlertChime();
+        }
+
+        previousOrdersRef.current = res.activeOrders.map((o) => o.id);
+      }
+
       setData(res);
     } catch (err) {
       console.error("Failed to load operations hub data:", err);
@@ -63,7 +151,7 @@ export default function ProductionOperationsHubPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [playAlertChime]);
 
   useEffect(() => {
     fetchHubData();
@@ -399,9 +487,14 @@ export default function ProductionOperationsHubPage() {
                       <div className="space-y-1.5 border-t border-slate-100 dark:border-slate-800 pt-3 text-xs">
                         {order.items.map((item, idx) => (
                           <div key={idx} className="flex justify-between items-center">
-                            <span className="text-slate-700 dark:text-slate-300 font-semibold">
-                              <span className="text-slate-400 font-bold mr-1.5">{item.quantity}x</span>
-                              {item.name}
+                            <span className="text-slate-700 dark:text-slate-300 font-semibold flex items-center gap-1.5 flex-wrap">
+                              <span className="text-slate-400 font-bold">{item.quantity}x</span>
+                              <span>{item.name}</span>
+                              {item.variantName && (
+                                <span className="px-1.5 py-0.2 text-[10px] font-extrabold bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 border border-indigo-500/25 rounded-md uppercase tracking-wider">
+                                  ({item.variantName})
+                                </span>
+                              )}
                             </span>
                             <span className="font-mono text-slate-500">{formatCurrency(item.price)}</span>
                           </div>

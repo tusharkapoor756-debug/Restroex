@@ -47,8 +47,9 @@ export class WhatsAppOrderEventListener {
         : `❌ *Order Cancelled*\nYour order ${displayOrderId} has been cancelled. We apologize for the inconvenience.`;
 
       const statusMessages: Record<string, string> = {
+        // Consolidated message for Accept Order (NEW → PREPARING): Single WhatsApp update
+        preparing: `🍳 *Order Accepted & Preparing!*\nYour order ${displayOrderId} has been accepted by the restaurant and is now being prepared in the kitchen.`,
         accepted: `✅ *Order Accepted!*\nYour order ${displayOrderId} has been accepted by the restaurant and is confirmed.`,
-        preparing: `🍳 *Preparing Your Order*\nThe kitchen has started preparing your order ${displayOrderId}.`,
         ready: `🔔 *Order Ready!*\nYour order ${displayOrderId} is ready!`,
         completed: `✨ *Order Completed*\nThank you for dining with us! We hope you enjoyed your meal.`,
         cancelled: cancelledMessage,

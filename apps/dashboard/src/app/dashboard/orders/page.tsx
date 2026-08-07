@@ -37,6 +37,7 @@ import {
 
 interface OrderItem {
   name: string;
+  variantName?: string;
   quantity: number;
   price: number;
 }
@@ -60,11 +61,9 @@ interface KanbanOrder {
 }
 
 const KANBAN_COLUMNS: { id: string; label: string; statuses: string[]; color: "info" | "warning" | "brand" | "success" }[] = [
-  { id: "new", label: "New Tickets", statuses: ["paid", "checkout_pending", "payment_pending", "cart_active"], color: "info" },
-  { id: "confirmed", label: "Confirmed", statuses: ["accepted"], color: "brand" },
-  { id: "preparing", label: "Preparing", statuses: ["preparing"], color: "warning" },
-  { id: "ready", label: "Ready to Serve", statuses: ["ready"], color: "success" },
-  { id: "completed", label: "Completed", statuses: ["completed", "delivered"], color: "info" },
+  { id: "new", label: "🟡 New Tickets", statuses: ["paid", "checkout_pending", "payment_pending", "cart_active"], color: "info" },
+  { id: "preparing", label: "🟠 Preparing", statuses: ["accepted", "preparing"], color: "warning" },
+  { id: "ready", label: "🟢 Ready to Serve", statuses: ["ready"], color: "success" },
 ];
 
 export default function KanbanLiveOrdersPage() {
@@ -75,6 +74,7 @@ export default function KanbanLiveOrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<KanbanOrder | null>(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const soundEnabledRef = useRef(true);
   const [newOrderPulseId, setNewOrderPulseId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>("all");
   const [filterQuery, setFilterQuery] = useState<string>("");
@@ -86,63 +86,69 @@ export default function KanbanLiveOrdersPage() {
   const previousOrdersRef = useRef<string[]>([]);
   const audioContextRef = useRef<AudioContext | null>(null);
 
-  // Initialize & unlock Web Audio API on first user gesture (fix autoplay browser policy)
+  // Sync soundEnabled state with ref
   useEffect(() => {
-    const unlockAudio = () => {
-      try {
-        if (!audioContextRef.current) {
-          audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        }
-        if (audioContextRef.current.state === "suspended") {
-          audioContextRef.current.resume();
-        }
-        console.log("[Restroex Audio] AudioContext unlocked successfully via user gesture.");
-      } catch (err) {
-        console.warn("[Restroex Audio] Could not unlock AudioContext:", err);
-      }
-    };
+    soundEnabledRef.current = soundEnabled;
+  }, [soundEnabled]);
 
-    window.addEventListener("click", unlockAudio, { once: true });
-    window.addEventListener("touchstart", unlockAudio, { once: true });
-    return () => {
-      window.removeEventListener("click", unlockAudio);
-      window.removeEventListener("touchstart", unlockAudio);
-    };
-  }, []);
-
-  // Web Audio chime sound
+  // Guaranteed Audio Siren Sound Player (HTML5 Audio + Web Audio API Synthesis)
   const playAlertChime = useCallback(() => {
-    if (!soundEnabled) {
-      console.log("[Restroex Audio] Alert chime suppressed (sound is OFF)");
+    if (!soundEnabledRef.current) {
+      console.log("[Restroex Audio] Alert siren suppressed (sound is OFF)");
       return;
     }
+
+    // Method 1: HTML5 Audio Notification Element Fallback
     try {
-      const ctx = audioContextRef.current || new (window.AudioContext || (window as any).webkitAudioContext)();
-      if (ctx.state === "suspended") {
-        ctx.resume();
-      }
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5 chime
-      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15); // A5 chime
-      gain.gain.setValueAtTime(0.4, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.5);
-      console.log("[Restroex Audio] New Order Chime Played Successfully!");
+      const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3");
+      audio.volume = 1.0;
+      audio.play().catch((err) => {
+        console.warn("[Restroex Audio] HTML5 Audio play deferred:", err);
+      });
     } catch (e) {
-      console.warn("[Restroex Audio] Audio chime playback error:", e);
+      console.warn("[Restroex Audio] HTML5 Audio init error:", e);
     }
-  }, [soundEnabled]);
+
+    // Method 2: Web Audio API Synthesized Siren
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = audioContextRef.current || new AudioCtx();
+        if (ctx.state === "suspended") {
+          ctx.resume();
+        }
+
+        const playBeep = (freq1: number, freq2: number, startTime: number, duration: number) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "sawtooth";
+          osc.frequency.setValueAtTime(freq1, startTime);
+          osc.frequency.exponentialRampToValueAtTime(freq2, startTime + duration);
+
+          gain.gain.setValueAtTime(1.0, startTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(startTime);
+          osc.stop(startTime + duration);
+        };
+
+        const now = ctx.currentTime;
+        playBeep(659.25, 880, now, 0.3);
+        playBeep(659.25, 880, now + 0.35, 0.3);
+        playBeep(880, 1174.66, now + 0.7, 0.5);
+      }
+    } catch (e) {
+      console.warn("[Restroex Audio] Web Audio siren error:", e);
+    }
+  }, []);
 
   const toggleSound = () => {
     const nextState = !soundEnabled;
     setSoundEnabled(nextState);
+    soundEnabledRef.current = nextState;
     if (nextState) {
-      // Play test beep immediately to confirm audio subsystem is working
       playAlertChime();
       toast.info("Sound Alert Enabled", "Test chime played. New orders will play sound.");
     } else {
@@ -181,7 +187,12 @@ export default function KanbanLiveOrdersPage() {
           customerPhone: o.customerPhone,
           customerName: o.customerName || undefined,
           customerAddress: o.customerAddress || undefined,
-          items: o.items?.map((i) => ({ name: i.itemNameSnapshot, quantity: i.quantity, price: i.unitPrice })) || [],
+          items: o.items?.map((i) => ({
+            name: i.itemNameSnapshot,
+            variantName: i.variantNameSnapshot,
+            quantity: i.quantity,
+            price: i.unitPrice,
+          })) || [],
           totalAmount: o.totalAmount,
           status: o.status as any,
           createdAt: new Date(o.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
@@ -194,18 +205,28 @@ export default function KanbanLiveOrdersPage() {
         };
       });
 
-      // Sound & Visual Alert trigger on new incoming order
-      if (!isInitial && previousOrdersRef.current.length > 0) {
-        const newIncoming = mapped.find((m) => !previousOrdersRef.current.includes(m.backendId));
-        if (newIncoming) {
-          playAlertChime();
-          setNewOrderPulseId(newIncoming.backendId);
-          toast.success(`New Order Arrived! #${newIncoming.id}`, `₹${newIncoming.totalAmount} • ${newIncoming.customerPhone || 'Customer'}`);
+      // ── CONTINUOUS ALARM LOOP FOR UNACCEPTED NEW ORDERS ──
+      // Checks if any order is waiting in NEW status ('checkout_pending', 'paid', 'payment_pending', 'cart_active')
+      const hasUnacceptedOrders = mapped.some((o) =>
+        ["checkout_pending", "paid", "payment_pending", "cart_active"].includes(o.status)
+      );
+
+      if (hasUnacceptedOrders && soundEnabled) {
+        // Trigger alert beep for unaccepted tickets
+        playAlertChime();
+
+        const newUnaccepted = mapped.find((m) =>
+          ["checkout_pending", "paid", "payment_pending"].includes(m.status) &&
+          !previousOrdersRef.current.includes(m.backendId)
+        );
+
+        if (newUnaccepted) {
+          setNewOrderPulseId(newUnaccepted.backendId);
+          toast.success(`New Unaccepted Order #${newUnaccepted.id}`, `Accept now to silence siren! Total: ₹${newUnaccepted.totalAmount}`);
           
-          // Browser Background Notification trigger
           if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-            new Notification(`Restroex: New Order #${newIncoming.id}`, {
-              body: `Total: ₹${newIncoming.totalAmount} | ${newIncoming.items.length} items`,
+            new Notification(`Restroex Siren Alert: Order #${newUnaccepted.id}`, {
+              body: `Total: ₹${newUnaccepted.totalAmount} | Awaiting Staff Acceptance`,
               icon: "/favicon.ico",
             });
           }
@@ -224,9 +245,9 @@ export default function KanbanLiveOrdersPage() {
 
   useEffect(() => {
     fetchOrders(true);
-    const interval = setInterval(() => fetchOrders(false), 8000); // 8s polling interval
+    // Poll every 3 seconds to check unaccepted queue and keep ringing siren until accepted
+    const interval = setInterval(() => fetchOrders(false), 3000);
     
-    // Request Browser Notification permissions
     if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
@@ -312,6 +333,7 @@ export default function KanbanLiveOrdersPage() {
       const isPulsing = newOrderPulseId === order.backendId;
       const isPaid = order.status === "paid" || String(order.payment?.paymentStatus) === "verified" || String(order.payment?.paymentStatus) === "captured";
       const isUrgent = order.minutesAgo >= 10; // 10+ min threshold for red alert
+      const isNewTicket = ["checkout_pending", "paid", "payment_pending", "cart_active"].includes(order.status);
 
       return (
         <Card
@@ -321,12 +343,16 @@ export default function KanbanLiveOrdersPage() {
             setSelectedOrder(order);
             setIsSheetOpen(true);
           }}
-          className={`space-y-3 relative p-4 transition-all duration-200 border-l-4 ${
+          className={`space-y-3 relative p-4 transition-all duration-300 border-l-4 ${
             isUrgent
-              ? "border-l-red-500"
+              ? "border-l-red-500 bg-red-50/20 dark:bg-red-950/10"
               : isPaid
               ? "border-l-emerald-500"
               : "border-l-amber-500"
+          } ${
+            isNewTicket
+              ? "animate-ticket-float animate-ticket-glow bg-gradient-to-b from-brand-50/40 to-transparent dark:from-brand-950/20 dark:to-transparent"
+              : "hover:-translate-y-1 hover:shadow-md"
           } ${
             isPulsing ? "ring-2 ring-brand-500 animate-pulse-glow" : ""
           } ${
@@ -335,6 +361,15 @@ export default function KanbanLiveOrdersPage() {
         >
           {/* Card Header: Order ID, Dining/Takeaway Tag, Timer & Payment Status */}
           <div className="space-y-2">
+            {isNewTicket && (
+              <div className="flex items-center justify-between bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider animate-beacon">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping" />
+                  🚨 ACTION REQUIRED: ACCEPT TICKET
+                </span>
+                <span className="font-mono text-amber-600 dark:text-amber-400">UNACCEPTED</span>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <span className="font-heading font-black text-base text-slate-900 dark:text-slate-100 tracking-tight">
                 #{order.id}
@@ -374,6 +409,23 @@ export default function KanbanLiveOrdersPage() {
                 {order.customerPhone ? order.customerPhone.split('@')[0] : "Customer"}
               </span>
             </div>
+
+            {/* Live Preparation Timer for Preparing Tickets */}
+            {(order.status === "preparing" || order.status === "accepted") && (
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Kitchen Prep Timer:</span>
+                <span className={`text-xs font-mono font-black px-2 py-0.5 rounded-md flex items-center gap-1 ${
+                  order.minutesAgo < 10
+                    ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                    : order.minutesAgo < 20
+                    ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+                    : "bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/40 animate-pulse"
+                }`}>
+                  <Clock className="h-3 w-3" />
+                  <span>⏱ {String(Math.floor(order.minutesAgo)).padStart(2, '0')}:00 ({order.minutesAgo}m)</span>
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Item Breakdown List */}
@@ -385,9 +437,16 @@ export default function KanbanLiveOrdersPage() {
                     <span className="font-black text-xs text-brand-600 dark:text-brand-400 bg-brand-500/10 px-1.5 py-0.5 rounded-md shrink-0">
                       {item.quantity}x
                     </span>
-                    <span className="font-bold text-slate-900 dark:text-slate-100 truncate text-xs">
-                      {item.name}
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap truncate">
+                      <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">
+                        {item.name}
+                      </span>
+                      {item.variantName && (
+                        <span className="px-1.5 py-0.2 text-[10px] font-extrabold bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 border border-indigo-500/25 rounded-md uppercase tracking-wider">
+                          ({item.variantName})
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <span className="font-semibold text-slate-500 dark:text-slate-400 text-xs shrink-0">
                     ₹{item.price * item.quantity}
@@ -419,31 +478,21 @@ export default function KanbanLiveOrdersPage() {
             </div>
 
             <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-              {(order.status === "paid" || order.status === "checkout_pending" || order.status === "payment_pending") && (
+              {/* ACTION 1: Accept Order (Jumps directly NEW → PREPARING) */}
+              {(order.status === "paid" || order.status === "checkout_pending" || order.status === "payment_pending" || (order.status as string) === "cart_active") && (
                 <Button
                   size="sm"
                   variant="primary"
-                  onClick={() => handleTransition(order.backendId, order.id, "accepted")}
-                  className="gap-1 px-4 font-bold shadow-sm"
-                >
-                  <Play className="h-3.5 w-3.5 fill-white" />
-                  <span>Accept</span>
-                </Button>
-              )}
-
-              {order.status === "accepted" && (
-                <Button
-                  size="sm"
-                  variant="warning"
                   onClick={() => handleTransition(order.backendId, order.id, "preparing")}
-                  className="gap-1 px-4 font-bold"
+                  className="gap-1.5 px-4 py-2 font-extrabold shadow-lg bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white animate-pulse border-0"
                 >
-                  <Clock className="h-3.5 w-3.5" />
-                  <span>Start Cooking</span>
+                  <CheckCircle2 className="h-4 w-4 fill-white text-emerald-600" />
+                  <span>✅ ACCEPT ORDER</span>
                 </Button>
               )}
 
-              {order.status === "preparing" && (
+              {/* ACTION 2: Mark Ready (PREPARING → READY) */}
+              {(order.status === "preparing" || order.status === "accepted") && (
                 <Button
                   size="sm"
                   variant="success"
@@ -451,10 +500,11 @@ export default function KanbanLiveOrdersPage() {
                   className="gap-1 px-4 font-bold"
                 >
                   <CheckCircle className="h-3.5 w-3.5" />
-                  <span>Mark Ready</span>
+                  <span>✅ Ready</span>
                 </Button>
               )}
 
+              {/* Auto-Archived Action when Ready */}
               {order.status === "ready" && (
                 <Button
                   size="sm"
@@ -463,7 +513,7 @@ export default function KanbanLiveOrdersPage() {
                   className="gap-1 px-4 font-bold text-emerald-600 dark:text-emerald-400"
                 >
                   <CheckCircle2 className="h-3.5 w-3.5" />
-                  <span>Serve</span>
+                  <span>Handover / Serve</span>
                 </Button>
               )}
 
@@ -609,15 +659,15 @@ export default function KanbanLiveOrdersPage() {
               onAction={() => fetchOrders(true)}
             />
           ) : (
-            /* STATE 4: POPULATED STATE (Responsive Kanban — horizontal scroll on mobile, grid on desktop) */
+            /* STATE 4: POPULATED STATE (Responsive Kanban — 3 Column Layout) */
             <div className="w-full overflow-x-auto pb-4 lg:overflow-x-visible">
-              <div className="flex gap-4 lg:grid lg:grid-cols-5 items-start min-w-max lg:min-w-0">
+              <div className="flex gap-4 lg:grid lg:grid-cols-3 items-start min-w-max lg:min-w-0">
               {KANBAN_COLUMNS.filter((col) => activeTab === "all" || activeTab === col.id).map((col) => {
                 const count = orders.filter((o) => col.statuses.includes(o.status)).length;
                 return (
                   <div
                     key={col.id}
-                    className="flex flex-col rounded-2xl bg-slate-100/70 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 p-3 space-y-3 min-h-[70vh] w-72 lg:w-auto shrink-0 lg:shrink"
+                    className="flex flex-col rounded-2xl bg-slate-100/70 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 p-3 space-y-3 min-h-[70vh] w-80 lg:w-auto shrink-0 lg:shrink"
                   >
                     {/* Column Header */}
                     <div className="flex items-center justify-between px-1 pb-1">
@@ -716,11 +766,16 @@ export default function KanbanLiveOrdersPage() {
               <div className="rounded-2xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950 p-4">
                 {selectedOrder.items.map((item, idx) => (
                   <div key={idx} className="flex justify-between items-center py-2.5 first:pt-0 last:pb-0">
-                    <div>
-                      <span className="font-bold text-slate-900 dark:text-slate-100">{item.quantity}x</span>
-                      <span className="ml-2 font-medium text-slate-700 dark:text-slate-300">{item.name}</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-extrabold text-slate-900 dark:text-slate-100">{item.quantity}x</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">{item.name}</span>
+                      {item.variantName && (
+                        <span className="px-2 py-0.5 text-xs font-black bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 border border-indigo-500/30 rounded-md uppercase tracking-wider">
+                          ({item.variantName})
+                        </span>
+                      )}
                     </div>
-                    <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    <span className="font-extrabold text-slate-900 dark:text-slate-100">
                       ₹{item.price * item.quantity}
                     </span>
                   </div>

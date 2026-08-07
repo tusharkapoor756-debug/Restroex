@@ -3,12 +3,10 @@ import { OrderStatus } from '../types/order.types';
 export class OrderStateMachine {
   private static readonly TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
     cart_active: ['checkout_pending', 'cancelled'],
-    // checkout_pending → payment_pending: normal WhatsApp flow (link sent, waiting for payment)
-    // checkout_pending → paid: online web flow where Razorpay webhook fires directly
-    // checkout_pending → cancelled: order abandoned
-    checkout_pending: ['payment_pending', 'paid', 'accepted', 'cancelled'],
-    payment_pending: ['paid', 'cancelled'],
-    paid: ['accepted', 'cancelled'],
+    // checkout_pending → preparing: simplified 2-click KOT flow where clicking Accept Order moves directly to preparing
+    checkout_pending: ['payment_pending', 'paid', 'accepted', 'preparing', 'cancelled'],
+    payment_pending: ['paid', 'preparing', 'cancelled'],
+    paid: ['accepted', 'preparing', 'cancelled'],
     accepted: ['preparing', 'cancelled'],
     preparing: ['ready', 'cancelled'],
     ready: ['completed', 'cancelled'],
