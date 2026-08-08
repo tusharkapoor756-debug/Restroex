@@ -178,7 +178,6 @@ export class CustomerRepository {
         created_source: dto.createdSource || 'WHATSAPP',
         name: dto.name || 'WhatsApp Customer',
         address: dto.address || null,
-        notes: dto.notes || null,
       })
       .select('*')
       .single();
@@ -201,7 +200,6 @@ export class CustomerRepository {
     if (dto.contactPhone !== undefined) updatePayload.contact_phone = dto.contactPhone;
     if (dto.primaryPhone !== undefined) updatePayload.primary_phone = dto.primaryPhone;
     if (dto.whatsappLid !== undefined) updatePayload.whatsapp_lid = dto.whatsappLid;
-    if (dto.notes !== undefined) updatePayload.notes = dto.notes;
     updatePayload.updated_at = new Date().toISOString();
 
     const { data, error } = await this.client

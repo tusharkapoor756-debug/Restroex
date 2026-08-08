@@ -1,6 +1,11 @@
 export interface UpdateSettingsDto {
-  // Business Profile
+  // Business Profile & Brand Identity
   logoUrl?: string;
+  coverImageUrl?: string;
+  primaryColor?: string;
+  restaurantStory?: string;
+  googleReviewUrl?: string;
+  galleryImages?: string[];
   name?: string;
   ownerName?: string;
   phoneNumber?: string;

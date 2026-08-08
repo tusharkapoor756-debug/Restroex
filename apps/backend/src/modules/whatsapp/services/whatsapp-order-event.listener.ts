@@ -18,6 +18,7 @@ export class WhatsAppOrderEventListener {
 
     logger.info('📱 Initializing WhatsApp Order Event Listener...');
 
+    // Note: PAYMENT_COMPLETED is handled exclusively by PaymentOrchestratorService with PDF attachment
     orderEventEmitter.on('ORDER_ACCEPTED', (payload) => this.handleOrderEvent('accepted', payload));
     orderEventEmitter.on('ORDER_PREPARING', (payload) => this.handleOrderEvent('preparing', payload));
     orderEventEmitter.on('ORDER_READY', (payload) => this.handleOrderEvent('ready', payload));
@@ -47,7 +48,6 @@ export class WhatsAppOrderEventListener {
         : `❌ *Order Cancelled*\nYour order ${displayOrderId} has been cancelled. We apologize for the inconvenience.`;
 
       const statusMessages: Record<string, string> = {
-        // Consolidated message for Accept Order (NEW → PREPARING): Single WhatsApp update
         preparing: `🍳 *Order Accepted & Preparing!*\nYour order ${displayOrderId} has been accepted by the restaurant and is now being prepared in the kitchen.`,
         accepted: `✅ *Order Accepted!*\nYour order ${displayOrderId} has been accepted by the restaurant and is confirmed.`,
         ready: `🔔 *Order Ready!*\nYour order ${displayOrderId} is ready!`,
@@ -64,7 +64,7 @@ export class WhatsAppOrderEventListener {
         });
         logger.info({ orderId, status, customerPhone, displayOrderId }, '💬 WhatsApp status notification sent to customer.');
       }
-    } catch (err) {
+    } catch (err: any) {
       logger.warn({ err, orderId, status }, 'Failed to dispatch WhatsApp status notification.');
     }
   }

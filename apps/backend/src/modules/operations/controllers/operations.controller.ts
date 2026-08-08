@@ -43,16 +43,7 @@ export class OperationsController {
       this.client.from('conversation_sessions').select('*').eq('restaurant_id', restaurantId),
     ]);
 
-    // System Health Checks
-    const dbStatus = db.getConnectionStatus();
-    let redisStatus = 'DISCONNECTED';
-    try {
-      redisStatus = redis.getClient().status === 'ready' ? 'CONNECTED' : 'DISCONNECTED';
-    } catch {
-      redisStatus = 'DISCONNECTED';
-    }
-    const queueStatus = getQueueHealthStatus();
-
+    // Business Operational Health Checks
     let whatsappStatus = 'DISCONNECTED';
     if (whatsappProvider) {
       const waStatusObj: any = await whatsappProvider.getStatus(restaurantId).catch(() => null);
@@ -71,10 +62,6 @@ export class OperationsController {
       store: { status: storeStatus, isStoreOpen, name: restaurantRes.data?.name || 'Restaurant' },
       whatsApp: { status: whatsappStatus === 'HEALTHY' ? 'HEALTHY' : 'WARNING', gateway: whatsappStatus },
       paymentGateway: { status: paymentGatewayStatus, failedCountToday: todayFailedPayments },
-      database: { status: dbStatus === 'CONNECTED' ? 'HEALTHY' : 'ERROR' },
-      apiBackend: { status: 'HEALTHY' },
-      realtimeSync: { status: 'HEALTHY' },
-      backgroundQueue: { status: queueStatus === 'CONNECTED' ? 'HEALTHY' : 'WARNING' },
     };
 
     // ── SECTION 2: TODAY'S LIVE KPIS ──

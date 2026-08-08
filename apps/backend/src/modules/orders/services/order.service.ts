@@ -100,17 +100,21 @@ export class OrderService {
       if (cartItem.variantId) {
         const dbVariant = variantsMap[cartItem.variantId];
         if (!dbVariant) {
-          errors.push(`Variant ID ${cartItem.variantId} does not exist for item "${dbItem.name}".`);
-          continue;
+          if (dbItem.basePrice >= 0) {
+            logger.warn({ variantId: cartItem.variantId, menuItemId: cartItem.menuItemId }, 'Stale variant ID in cart; gracefully falling back to item base price');
+            unitPrice = dbItem.basePrice;
+          } else {
+            errors.push(`Variant for item "${dbItem.name}" is no longer available.`);
+            continue;
+          }
+        } else {
+          if (!dbVariant.isAvailable) {
+            errors.push(`Variant "${dbVariant.name}" for item "${dbItem.name}" is currently unavailable.`);
+            continue;
+          }
+          unitPrice = dbVariant.price; // absolute variant price overrides base_price
+          variantName = dbVariant.name;
         }
-
-        if (!dbVariant.isAvailable) {
-          errors.push(`Variant "${dbVariant.name}" for item "${dbItem.name}" is currently unavailable.`);
-          continue;
-        }
-
-        unitPrice = dbVariant.price; // absolute variant price overrides base_price
-        variantName = dbVariant.name;
       }
 
       const totalPrice = unitPrice * cartItem.quantity;

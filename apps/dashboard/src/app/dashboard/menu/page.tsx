@@ -12,6 +12,7 @@ import { EmptyState, ErrorState } from "../../../components/ui/StateViews";
 import { Modal } from "../../../components/ui/Modal";
 import { Input, Select } from "../../../components/ui/Input";
 import { MenuImportModal } from "../../../components/menu/MenuImportModal";
+import { UploadService } from "../../../lib/services/upload.service";
 import { FEATURE_FLAGS } from "../../../lib/feature-flags";
 import {
   Search,
@@ -72,10 +73,26 @@ export default function ProductionMenuCatalogPage() {
     vegType: "veg" as "veg" | "non-veg",
     isPopular: false,
     allowInstructions: true,
-    // Always start empty — variants are optional. If the user doesn't add any,
-    // we send [] to the backend so stale variants are cleared.
+    imageUrl: "",
     variants: [] as { variantName: string; price: number }[],
   });
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
+  const handleDishImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsUploadingImage(true);
+      const result = await UploadService.uploadFile(file);
+      setFormData((prev) => ({ ...prev, imageUrl: result.url }));
+      toast.success("Dish Photo Uploaded", "WebP image generated successfully.");
+    } catch (err: any) {
+      toast.error("Upload Failed", err.message || "Could not upload dish image.");
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
 
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -202,6 +219,7 @@ export default function ProductionMenuCatalogPage() {
           vegType: formData.vegType,
           isPopular: formData.isPopular,
           allowInstructions: formData.allowInstructions,
+          imageUrl: formData.imageUrl || undefined,
           variants: cleanVariants,
         });
         setItems((prev) => [...prev, created]);
@@ -215,6 +233,7 @@ export default function ProductionMenuCatalogPage() {
           vegType: formData.vegType,
           isPopular: formData.isPopular,
           allowInstructions: formData.allowInstructions,
+          imageUrl: formData.imageUrl || undefined,
           variants: cleanVariants,
         });
         setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
@@ -290,6 +309,15 @@ export default function ProductionMenuCatalogPage() {
           <Button
             variant="secondary"
             size="sm"
+            onClick={() => window.location.href = "/dashboard/menu/combos"}
+            className="gap-2 font-extrabold bg-gradient-to-r from-orange-500 via-amber-500 to-rose-500 text-white shadow-md hover:opacity-95 border-0 cursor-pointer"
+          >
+            <span>🎁 Manage Special Combos</span>
+          </Button>
+
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => {
               setEditingCategory(null);
               setCategoryName("");
@@ -297,7 +325,7 @@ export default function ProductionMenuCatalogPage() {
               setCategoryIsVisible(true);
               setIsCategoryModalOpen(true);
             }}
-            className="gap-1.5 font-bold"
+            className="gap-2 font-bold"
           >
             <FolderPlus className="h-4 w-4 text-brand-600" />
             <span>+ Add Category</span>
@@ -317,7 +345,7 @@ export default function ProductionMenuCatalogPage() {
                 vegType: "veg",
                 isPopular: false,
                 allowInstructions: true,
-                // Start with no variants — user adds them only if this item has size options
+                imageUrl: "",
                 variants: [],
               });
               setIsModalOpen(true);
@@ -429,14 +457,20 @@ export default function ProductionMenuCatalogPage() {
           {filteredItems.map((item) => (
             <Card key={item.id} className="space-y-3 relative p-5">
               <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-2.5">
-                  {item.vegType === "veg" ? (
-                    <span className="p-1 rounded-md border border-emerald-500 text-emerald-500 mt-0.5" title="Vegetarian">
-                      <Leaf className="h-3.5 w-3.5" />
+                <div className="flex items-start gap-2.5 min-w-0">
+                  {(item as any).imageUrl || (item as any).image ? (
+                    <img
+                      src={(item as any).imageUrl || (item as any).image}
+                      alt={item.name}
+                      className="w-12 h-12 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+                    />
+                  ) : item.vegType === "veg" ? (
+                    <span className="p-1.5 rounded-xl border border-emerald-500 text-emerald-500 shrink-0" title="Vegetarian">
+                      <Leaf className="h-4 w-4" />
                     </span>
                   ) : (
-                    <span className="p-1 rounded-md border border-red-500 text-red-500 mt-0.5" title="Non-Veg">
-                      <Drumstick className="h-3.5 w-3.5" />
+                    <span className="p-1.5 rounded-xl border border-red-500 text-red-500 shrink-0" title="Non-Veg">
+                      <Drumstick className="h-4 w-4" />
                     </span>
                   )}
 
@@ -514,6 +548,7 @@ export default function ProductionMenuCatalogPage() {
                         vegType: item.vegType as any,
                         isPopular: item.isPopular,
                         allowInstructions: item.allowInstructions ?? true,
+                        imageUrl: (item as any).imageUrl || (item as any).image || "",
                         variants: item.variants?.map((v) => ({ variantName: v.variantName, price: v.price })) || [],
                       });
                       setIsModalOpen(true);
@@ -591,6 +626,38 @@ export default function ProductionMenuCatalogPage() {
         }
       >
         <form onSubmit={handleSaveItem} className="space-y-4 text-xs">
+          {/* Dish Image Upload */}
+          <div className="space-y-1.5 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+            <span className="font-bold text-slate-800 dark:text-slate-200 block text-xs">Dish Photo</span>
+            <div className="flex items-center gap-3">
+              {formData.imageUrl ? (
+                <img
+                  src={formData.imageUrl}
+                  alt="Dish preview"
+                  className="w-14 h-14 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+                />
+              ) : (
+                <div className="w-14 h-14 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-center text-slate-400 shrink-0">
+                  <UtensilsCrossed className="h-6 w-6" />
+                </div>
+              )}
+              <div className="flex-1">
+                <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 cursor-pointer shadow-2xs">
+                  <Upload className="h-3.5 w-3.5" />
+                  <span>{isUploadingImage ? "Uploading..." : formData.imageUrl ? "Change Photo" : "Upload Dish Photo"}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleDishImageUpload}
+                    disabled={isUploadingImage}
+                    className="hidden"
+                  />
+                </label>
+                <p className="text-[10px] text-slate-500 mt-1">Auto-converted to WebP format for fast customer loading.</p>
+              </div>
+            </div>
+          </div>
+
           {/* Item Name */}
           <Input
             label="Item Name"

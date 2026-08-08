@@ -15,7 +15,7 @@ export class SettingsRepository {
     // 1. Fetch restaurant profile
     const { data: profileRow, error: profileError } = await this.client
       .from('restaurants')
-      .select('logo_url, name, owner_name, phone_number, phone, email, address, city, state, pincode')
+      .select('id, slug, logo_url, cover_image_url, primary_color, restaurant_story, google_review_url, gallery_images, name, owner_name, phone_number, phone, email, address, city, state, pincode')
       .eq('id', restaurantId)
       .maybeSingle();
 
@@ -95,6 +95,11 @@ export class SettingsRepository {
       };
 
       if (profileUpdate.logoUrl !== undefined) profilePayload.logo_url = profileUpdate.logoUrl;
+      if (profileUpdate.coverImageUrl !== undefined) profilePayload.cover_image_url = profileUpdate.coverImageUrl;
+      if (profileUpdate.primaryColor !== undefined) profilePayload.primary_color = profileUpdate.primaryColor;
+      if (profileUpdate.restaurantStory !== undefined) profilePayload.restaurant_story = profileUpdate.restaurantStory;
+      if (profileUpdate.googleReviewUrl !== undefined) profilePayload.google_review_url = profileUpdate.googleReviewUrl;
+      if (profileUpdate.galleryImages !== undefined) profilePayload.gallery_images = profileUpdate.galleryImages;
       if (profileUpdate.name !== undefined) profilePayload.name = profileUpdate.name;
       if (profileUpdate.ownerName !== undefined) profilePayload.owner_name = profileUpdate.ownerName;
       if (profileUpdate.phoneNumber !== undefined) {
@@ -184,7 +189,13 @@ export class SettingsRepository {
   private mapToDomain(profileRow: any, settingsRow: any): FullSettings {
     return {
       profile: {
+        slug: profileRow.slug || profileRow.id || settingsRow.restaurant_id,
         logoUrl: profileRow.logo_url || undefined,
+        coverImageUrl: profileRow.cover_image_url || undefined,
+        primaryColor: profileRow.primary_color || '#F97316',
+        restaurantStory: profileRow.restaurant_story || undefined,
+        googleReviewUrl: profileRow.google_review_url || undefined,
+        galleryImages: Array.isArray(profileRow.gallery_images) ? profileRow.gallery_images : [],
         name: profileRow.name || '',
         ownerName: profileRow.owner_name || undefined,
         phoneNumber: profileRow.phone_number || profileRow.phone || '',

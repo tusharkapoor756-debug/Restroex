@@ -309,7 +309,7 @@ export class PaymentOrchestratorService {
     
     try {
       await orderService.transitionOrder(payment.orderId, 'paid');
-    } catch (err) {
+    } catch (err: any) {
       logger.error({ err, orderId: payment.orderId }, 'Failed to transition order state');
     }
 
@@ -324,7 +324,6 @@ export class PaymentOrchestratorService {
     }
 
     // 3. NON-BLOCKING PARALLEL EXECUTION ARCHITECTURE:
-    // Kitchen Notifications and FSM Session Reset happen immediately without waiting for PDF or messaging latency.
     Promise.allSettled([
       // Task A: Notify Kitchen KDS (Zero Delay)
       (async () => {
@@ -374,9 +373,6 @@ export class PaymentOrchestratorService {
             `Amount Paid: *₹${paidAmount.toFixed(2)}*`,
             `Status     : *PAID ✓*`,
             ``,
-            `📄 *Tax Invoice Link:*`,
-            `${invoiceResult.signedUrl}`,
-            ``,
             `🍳 We have started preparing your order. Live updates will appear here!`,
           ].join('\n');
 
@@ -389,14 +385,12 @@ export class PaymentOrchestratorService {
               `Tax_Invoice_${invoiceResult.invoiceNumber}.pdf`,
               messageText
             );
-          } catch (docErr) {
-            // Fall back to text message if document delivery fails on specific provider
+          } catch (docErr: any) {
             await messages.sendText(payment.restaurantId, payment.customerPhone, messageText);
           }
           logger.info({ paymentId: payment.id, invoiceNumber: invoiceResult.invoiceNumber }, 'Tax Invoice notification sent to customer.');
         } catch (invoiceErr: any) {
           logger.error({ error: invoiceErr.message, orderId: payment.orderId }, '⚠️ Invoice Generation failed non-blockingly. Order remains PAID.');
-          // Fallback confirmation message
           const fallbackText = `✅ *Payment Received Successfully!*\n\nOrder ID: *${persistedOrder.humanReadableId || payment.orderId}*\nAmount Paid: *₹${(payment.verifiedAmount || payment.amount || 0).toFixed(2)}*\n\nYour order is being prepared!`;
           await messages.sendText(payment.restaurantId, payment.customerPhone, fallbackText).catch(() => {});
         }

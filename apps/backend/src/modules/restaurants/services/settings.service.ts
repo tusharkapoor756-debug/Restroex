@@ -34,9 +34,36 @@ export class SettingsService {
     const profile: Partial<BusinessProfile> = {};
     const settings: Partial<Omit<RestaurantSettings, 'id' | 'restaurantId' | 'createdAt' | 'updatedAt'>> = {};
 
-    // ─── Business Profile Validation ─────────────────────────────────────────
+    // ─── Business Profile & Brand Identity Validation ─────────────────────────
     if (dto.logoUrl !== undefined) {
       profile.logoUrl = dto.logoUrl ? String(dto.logoUrl).trim() : undefined;
+    }
+
+    if (dto.coverImageUrl !== undefined) {
+      profile.coverImageUrl = dto.coverImageUrl ? String(dto.coverImageUrl).trim() : undefined;
+    }
+
+    if (dto.primaryColor !== undefined) {
+      const color = String(dto.primaryColor || '#F97316').trim();
+      if (!/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(color)) {
+        throw new BadRequestError('Invalid primaryColor hex format (e.g. #F97316)');
+      }
+      profile.primaryColor = color;
+    }
+
+    if (dto.restaurantStory !== undefined) {
+      profile.restaurantStory = dto.restaurantStory ? String(dto.restaurantStory).trim() : undefined;
+    }
+
+    if (dto.googleReviewUrl !== undefined) {
+      profile.googleReviewUrl = dto.googleReviewUrl ? String(dto.googleReviewUrl).trim() : undefined;
+    }
+
+    if (dto.galleryImages !== undefined) {
+      if (!Array.isArray(dto.galleryImages)) {
+        throw new BadRequestError('galleryImages must be an array of image URL strings');
+      }
+      profile.galleryImages = dto.galleryImages.map((img) => String(img).trim()).filter(Boolean);
     }
 
     if (dto.name !== undefined) {

@@ -2,6 +2,8 @@ import { RestaurantRepository } from '../repositories/restaurant.repository';
 import { SettingsService } from './settings.service';
 import { MenuService } from '../../menu/services/menu.service';
 import { NotFoundError } from '../../../shared/errors/app-error';
+import { db } from '../../../infrastructure/database/database.client';
+import { logger } from '../../../infrastructure/logger/logger';
 
 export class PublicBootstrapService {
   private readonly restaurantRepo = new RestaurantRepository();
@@ -82,7 +84,93 @@ export class PublicBootstrapService {
       if (usablePaymentMethods.length === 0) usablePaymentMethods = ['cash'];
     }
 
-    // 5. Construct Single Bootstrap Response Contract
+    // 5. Resolve Active Coupons for public customer display
+    let activeCoupons: any[] = [];
+    try {
+      const { data: activeCouponsRows, error: couponErr } = await db.getClient()
+        .from('coupons')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+      if (couponErr) {
+        logger.error({ error: couponErr, restaurantId }, '⚠️ [BOOTSTRAP] Failed to fetch active coupons');
+      }
+
+      const now = new Date();
+      const nowMs = now.getTime();
+      const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const currentDayName = daysOfWeek[now.getDay()];
+
+      activeCoupons = (activeCouponsRows || []).filter((c: any) => {
+        // 1. Starts At Check (Auto-Activation Date & Time)
+        if (c.starts_at) {
+          const startTime = new Date(c.starts_at).getTime();
+          if (!isNaN(startTime) && startTime > nowMs) return false;
+        }
+
+        // 2. Expires At Check (Auto-Expiry Date & Time)
+        if (c.expires_at) {
+          const expDate = new Date(c.expires_at);
+          const expTime = (expDate.getUTCHours() === 0 && expDate.getUTCMinutes() === 0)
+            ? expDate.getTime() + 86399999
+            : expDate.getTime();
+          if (expTime < nowMs) return false;
+        }
+
+        // 3. Recurring Active Days Check (e.g. Every Sunday)
+        if (c.active_days && Array.isArray(c.active_days) && c.active_days.length > 0) {
+          const normalizedDays = c.active_days.map((d: any) => String(d).toLowerCase().trim());
+          if (!normalizedDays.includes(currentDayName)) return false;
+        }
+
+        return true;
+      }).map((c: any) => ({
+        id: c.id,
+        code: c.code,
+        discountType: c.discount_type === 'flat' ? 'fixed' : c.discount_type,
+        discountValue: Number(c.discount_value),
+        minOrderAmount: Number(c.min_order_amount || 0),
+        maxDiscountAmount: c.max_discount_amount ? Number(c.max_discount_amount) : undefined,
+        startsAt: c.starts_at || undefined,
+        expiresAt: c.expires_at || undefined,
+        activeDays: c.active_days || undefined,
+      }));
+    } catch (err: any) {
+      logger.error({ err, restaurantId }, '⚠️ [BOOTSTRAP CATCH] Error querying active coupons');
+    }
+
+    // 5b. Resolve Active Special Combos for public customer display
+    let activeCombos: any[] = [];
+    try {
+      const { data: comboRows } = await db.getClient()
+        .from('combos')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: false });
+
+      activeCombos = (comboRows || []).map((row: any) => {
+        const comboPrice = Number(row.combo_price || 0);
+        const originalPrice = Number(row.original_price || comboPrice);
+        return {
+          id: row.id,
+          name: row.name,
+          description: row.description || null,
+          comboPrice,
+          originalPrice,
+          savingsAmount: Math.max(0, originalPrice - comboPrice),
+          imageUrl: row.image_url || null,
+          itemsIncluded: Array.isArray(row.items_included) ? row.items_included : [],
+        };
+      });
+    } catch (comboErr: any) {
+      logger.error({ err: comboErr, restaurantId }, '⚠️ [BOOTSTRAP CATCH] Error querying active combos');
+    }
+
+    // 6. Construct Single Bootstrap Response Contract
     return {
       restaurant: {
         id: restaurant.id,
@@ -93,10 +181,12 @@ export class PublicBootstrapService {
         city: restaurant.city || null,
       },
       theme: {
-        // Logo comes from BusinessProfile if set in Dashboard Settings.
         logoUrl: profile.logoUrl || null,
-        coverImageUrl: null, // future: add coverImageUrl field to BusinessProfile
-        primaryColor: '#E53E3E',
+        coverImageUrl: profile.coverImageUrl || null,
+        primaryColor: profile.primaryColor || '#F97316',
+        restaurantStory: profile.restaurantStory || null,
+        googleReviewUrl: profile.googleReviewUrl || null,
+        galleryImages: profile.galleryImages || [],
         secondaryColor: '#2D3748',
         accentColor: '#38A169',
         fontFamily: 'Inter, sans-serif',
@@ -105,8 +195,6 @@ export class PublicBootstrapService {
       },
       operationalStatus: {
         isOpen: settings.isOpen ?? true,
-        // isBusy requires a live active-order count query — not available from settings.
-        // Future: query ORDER count with status IN ('received','accepted','preparing').
         isBusy: false,
         maxActiveOrders: settings.maxActiveOrders || 20,
         statusMessage: settings.isOpen ? 'Accepting orders' : 'Restaurant is closed',
@@ -121,10 +209,11 @@ export class PublicBootstrapService {
         },
         paymentMethods: usablePaymentMethods,
         taxes: {
-          // gstPercentage is the actual field name in RestaurantSettings
           taxPercentage: settings.gstEnabled ? (settings.gstPercentage || 0) : 0,
         },
       },
+      activeCoupons,
+      activeCombos,
       menu: {
         categories: enrichedCategories,
       },

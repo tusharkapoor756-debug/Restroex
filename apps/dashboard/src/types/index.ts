@@ -338,7 +338,13 @@ export interface AiLog {
 
 /** Business profile fields stored on the restaurants table */
 export interface BusinessProfile {
+  slug?: string;
   logoUrl?: string;
+  coverImageUrl?: string;
+  primaryColor?: string;
+  restaurantStory?: string;
+  googleReviewUrl?: string;
+  galleryImages?: string[];
   name: string;
   ownerName?: string;
   phoneNumber: string;
@@ -400,8 +406,13 @@ export interface FullSettings {
 
 /** Payload for PATCH /restaurants/settings */
 export interface UpdateSettingsPayload {
-  // Business Profile
+  // Business Profile & Brand Identity
   logoUrl?: string;
+  coverImageUrl?: string;
+  primaryColor?: string;
+  restaurantStory?: string;
+  googleReviewUrl?: string;
+  galleryImages?: string[];
   name?: string;
   ownerName?: string;
   phoneNumber?: string;

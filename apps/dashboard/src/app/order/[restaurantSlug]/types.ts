@@ -20,6 +20,9 @@ export interface Theme {
   fontFamily: string;
   borderRadius: string;
   buttonStyle: "rounded" | "square" | "pill";
+  googleReviewUrl?: string | null;
+  galleryImages?: string[];
+  restaurantStory?: string | null;
 }
 
 export interface OperationalStatus {
@@ -78,11 +81,39 @@ export interface MenuCategory {
   items: MenuItem[];
 }
 
+export interface ActiveCoupon {
+  id: string;
+  code: string;
+  discountType: "percentage" | "fixed";
+  discountValue: number;
+  minOrderAmount: number;
+  maxDiscountAmount?: number;
+}
+
+export interface ComboItemIncluded {
+  menuItemId?: string;
+  name: string;
+  quantity: number;
+}
+
+export interface ActiveCombo {
+  id: string;
+  name: string;
+  description: string | null;
+  comboPrice: number;
+  originalPrice: number;
+  savingsAmount: number;
+  imageUrl: string | null;
+  itemsIncluded: ComboItemIncluded[];
+}
+
 export interface BootstrapData {
   restaurant: RestaurantInfo;
   theme: Theme;
   operationalStatus: OperationalStatus;
   capabilities: Capabilities;
+  activeCoupons?: ActiveCoupon[];
+  activeCombos?: ActiveCombo[];
   menu: { categories: MenuCategory[] };
 }
 
@@ -107,6 +138,7 @@ export interface CartItem {
   specialInstructions?: string;
   imageUrl: string | null;
   isVeg: boolean;
+  allowInstructions?: boolean;
 }
 
 export type OrderMode = "dining" | "takeaway";

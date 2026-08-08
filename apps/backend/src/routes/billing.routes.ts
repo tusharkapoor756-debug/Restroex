@@ -162,4 +162,77 @@ router.post(
   })
 );
 
+/**
+ * GET /api/v1/billing/wallet
+ * Fetch current SaaS software credit balance for an authenticated restaurant session
+ */
+router.get(
+  '/wallet',
+  restaurantSessionMiddleware,
+  asyncHandler(async (req: Request, res: Response) => {
+    const restaurantId = (req as any).restaurantId;
+    if (!restaurantId) throw new BadRequestError('Authenticated restaurant session required');
+
+    const { walletService } = require('../modules/wallet/services/wallet.service');
+    const balanceInfo = await walletService.getWalletBalance(restaurantId);
+
+    res.json({
+      success: true,
+      data: balanceInfo,
+    });
+  })
+);
+
+/**
+ * POST /api/v1/billing/wallet/recharge
+ * Recharge SaaS software credits for an authenticated restaurant session
+ */
+router.post(
+  '/wallet/recharge',
+  restaurantSessionMiddleware,
+  asyncHandler(async (req: Request, res: Response) => {
+    const restaurantId = (req as any).restaurantId;
+    const { credits, amount, planName, paymentReference } = req.body;
+
+    if (!restaurantId || !credits || !amount) {
+      throw new BadRequestError('credits and amount are required for SaaS credit recharge');
+    }
+
+    const { walletService } = require('../modules/wallet/services/wallet.service');
+    const result = await walletService.rechargeCredits(
+      restaurantId,
+      Number(credits),
+      Number(amount),
+      `SaaS Software Recharge: ${planName || 'Credit Pack'} (${credits} credits)`,
+      paymentReference || `PAY_${Date.now()}`
+    );
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  })
+);
+
+/**
+ * GET /api/v1/billing/wallet/ledger
+ * Fetch transaction ledger history for an authenticated restaurant session
+ */
+router.get(
+  '/wallet/ledger',
+  restaurantSessionMiddleware,
+  asyncHandler(async (req: Request, res: Response) => {
+    const restaurantId = (req as any).restaurantId;
+    if (!restaurantId) throw new BadRequestError('Authenticated restaurant session required');
+
+    const { walletService } = require('../modules/wallet/services/wallet.service');
+    const ledger = await walletService.getTransactionHistory(restaurantId);
+
+    res.json({
+      success: true,
+      data: ledger,
+    });
+  })
+);
+
 export default router;

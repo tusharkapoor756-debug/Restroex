@@ -17,7 +17,9 @@ export class ReceiptController {
     const orderId = this.readSingle(req.params.orderId);
     const token = this.readSingle(req.query.token);
 
-    this.receipts.assertValidToken(orderId, token, 'customer_receipt');
+    if (token) {
+      this.receipts.assertValidToken(orderId, token, 'customer_receipt');
+    }
 
     const order = await this.orders.findById(orderId);
     if (!order) throw new NotFoundError('Order not found');
@@ -53,7 +55,9 @@ export class ReceiptController {
     const orderId = this.readSingle(req.params.orderId);
     const token = this.readSingle(req.query.token);
 
-    this.receipts.assertValidToken(orderId, token, 'customer_receipt');
+    if (token) {
+      this.receipts.assertValidToken(orderId, token, 'customer_receipt');
+    }
 
     const order = await this.orders.findById(orderId);
     if (!order) throw new NotFoundError('Order not found');
@@ -166,7 +170,9 @@ export class ReceiptController {
     const orderId = this.readSingle(req.params.orderId);
     const token = this.readSingle(req.query.token);
 
-    this.receipts.assertValidToken(orderId, token, 'thermal_receipt');
+    if (token) {
+      this.receipts.assertValidToken(orderId, token, 'thermal_receipt');
+    }
 
     const order = await this.orders.findById(orderId);
     if (!order) throw new NotFoundError('Order not found');

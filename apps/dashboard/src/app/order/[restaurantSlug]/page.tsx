@@ -2,7 +2,7 @@
 
 // apps/dashboard/src/app/order/[restaurantSlug]/page.tsx
 // Root page of the Customer Experience Platform.
-// Assembles all components. NO admin authentication — fully public.
+// Assembles all components with zero-friction inline steppers and quick filters.
 
 import React, { useEffect, useRef, useState } from "react";
 import { useBootstrap } from "./hooks/useBootstrap";
@@ -14,6 +14,10 @@ import MenuSection from "./components/MenuSection";
 import ItemCustomizerModal from "./components/ItemCustomizerModal";
 import CartDrawer from "./components/CartDrawer";
 import CheckoutModal from "./components/CheckoutModal";
+import OrderTrackingView from "./components/OrderTrackingView";
+import MenuSkeleton from "./components/MenuSkeleton";
+import ComboSection from "./components/ComboSection";
+import { decodeTableToken } from "../../../lib/utils/tableToken";
 
 interface Props {
   params: Promise<{ restaurantSlug: string }>;
@@ -33,19 +37,45 @@ export default function OrderingPage({ params }: Props) {
   const primaryColor = data?.theme.primaryColor ?? "#f97316";
   const [orderStatus, setOrderStatus] = useState<string>("checkout_pending");
 
-  // Header-level filter state (lifted from RestaurantHeader for menu filtering)
+  // Header-level filter state
   const [searchQuery, setSearchQuery] = useState("");
-  const [vegOnly, setVegOnly] = useState(false);
-  const [onlyBestsellers, setOnlyBestsellers] = useState(false);
+  const [filterMode, setFilterMode] = useState<"all" | "veg" | "nonveg" | "popular">("all");
 
-  // Read URL query params on page load:
-  // - ?phone= : WhatsApp number pre-filled by bot greeting link → auto-populate checkout phone field
-  // - ?orderId= : Razorpay payment callback → show order confirmation screen
+  // Calculate cart quantity per item ID for inline steppers
+  const cartQuantities = React.useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const item of cart.cart.items) {
+      map[item.menuItemId] = (map[item.menuItemId] || 0) + item.quantity;
+    }
+    return map;
+  }, [cart.cart.items]);
+
+  // Read URL query params on page load
   useEffect(() => {
     if (typeof window !== "undefined") {
       const searchParams = new URLSearchParams(window.location.search);
+      // Pre-select Table Number and Order Mode from Tamper-Proof Table QR Token Scan
+      const urlToken = searchParams.get("t") || searchParams.get("token");
+      const urlTable = searchParams.get("table");
+      const urlMode = searchParams.get("mode") || searchParams.get("orderMode");
 
-      // Pre-fill phone & WhatsApp JID from WhatsApp greeting link (?phone=82073285091419%40lid)
+      let resolvedTable: number | null = null;
+      if (urlToken) {
+        resolvedTable = decodeTableToken(urlToken);
+      } else if (urlTable) {
+        // Fallback for legacy plain table numbers
+        const num = parseInt(urlTable, 10);
+        if (!isNaN(num) && num > 0) resolvedTable = num;
+      }
+
+      if (resolvedTable) {
+        cart.setTableNumber(resolvedTable);
+        cart.setOrderMode("dining");
+      } else if (urlMode === "dining" || urlMode === "takeaway") {
+        cart.setOrderMode(urlMode as "dining" | "takeaway");
+      }
+
+      // Pre-fill phone & WhatsApp JID from WhatsApp greeting link
       const urlPhone = searchParams.get("phone");
       if (urlPhone) {
         const decodedJid = decodeURIComponent(urlPhone);
@@ -55,7 +85,7 @@ export default function OrderingPage({ params }: Props) {
         }
       }
 
-      // Post-payment return (?orderId=...&status=success)
+      // Post-payment return
       const urlOrderId = searchParams.get("orderId");
       const urlStatus = searchParams.get("status");
       if (urlOrderId) {
@@ -73,7 +103,6 @@ export default function OrderingPage({ params }: Props) {
   useEffect(() => {
     if (!completedOrderId) return;
     const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:4000";
-    // Terminal statuses — stop polling when we reach one of these
     const TERMINAL_STATUSES = new Set(["paid", "accepted", "preparing", "ready", "completed", "cancelled"]);
 
     let active = true;
@@ -136,17 +165,52 @@ export default function OrderingPage({ params }: Props) {
     cart.clearCart();
   }
 
+  // Zero-Friction Item Addition:
+  // If simple item without variants/add-ons, add directly to cart!
+  // If item has variants or add-ons, open customizer modal.
+  const handleItemClick = (item: MenuItem) => {
+    const hasVariantsOrAddons = item.variants.length > 0 || (item.modifierGroups && item.modifierGroups.length > 0);
+    if (!hasVariantsOrAddons) {
+      cart.addItem({
+        cartItemId: `${item.id}_default`,
+        menuItemId: item.id,
+        name: item.name,
+        unitPrice: item.price,
+        quantity: 1,
+        selectedModifiers: [],
+        imageUrl: item.imageUrl ?? null,
+        isVeg: item.isVeg,
+        allowInstructions: item.allowInstructions ?? true,
+      });
+    } else {
+      setSelectedItem(item);
+    }
+  };
+
+  const handleIncrement = (item: MenuItem) => {
+    cart.addItem({
+      cartItemId: `${item.id}_default`,
+      menuItemId: item.id,
+      name: item.name,
+      unitPrice: item.price,
+      quantity: 1,
+      selectedModifiers: [],
+      imageUrl: item.imageUrl ?? null,
+      isVeg: item.isVeg,
+      allowInstructions: item.allowInstructions ?? true,
+    });
+  };
+
+  const handleDecrement = (item: MenuItem) => {
+    const cartItem = cart.cart.items.find((i) => i.menuItemId === item.id);
+    if (cartItem) {
+      cart.updateQuantity(cartItem.cartItemId, cartItem.quantity - 1);
+    }
+  };
+
   // --- Loading State ---
   if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4">
-        <div
-          className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin"
-          style={{ borderColor: `${primaryColor} transparent transparent transparent` }}
-        />
-        <p className="text-slate-400 text-xs font-semibold">Loading menu…</p>
-      </div>
-    );
+    return <MenuSkeleton />;
   }
 
   // --- Error State ---
@@ -163,55 +227,22 @@ export default function OrderingPage({ params }: Props) {
   const { restaurant, theme, operationalStatus, capabilities, menu } = data;
   const availableCategories = menu.categories.filter((c) => c.items.length > 0);
 
-  // --- Order Confirmed State ---
+  // --- Order Confirmed / Tracking State ---
   if (completedOrderId) {
-    const isPaidOrAccepted = orderStatus === "paid" || orderStatus === "accepted" || orderStatus === "preparing" || orderStatus === "ready" || orderStatus === "completed";
-    const isPaymentPending = orderStatus === "payment_pending" || orderStatus === "checkout_pending";
-
-    const statusLabel: Record<string, string> = {
-      checkout_pending: "Awaiting Payment",
-      payment_pending: "Payment Pending",
-      paid: "Payment Confirmed ✅",
-      accepted: "Order Accepted 👌",
-      preparing: "Being Prepared 👨‍🍳",
-      ready: "Ready for Pickup! 🎉",
-      completed: "Order Completed",
-      cancelled: "Order Cancelled",
-    };
-    const currentLabel = statusLabel[orderStatus] ?? orderStatus.replace("_", " ");
-
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-5 px-6 text-center">
-        <div
-          className="w-20 h-20 rounded-full flex items-center justify-center text-4xl shadow-lg"
-          style={{ backgroundColor: primaryColor + "22" }}
-        >{isPaidOrAccepted ? "🎉" : isPaymentPending ? "⏳" : "🎉"}</div>
-        <h1 className="text-xl font-extrabold text-slate-900">
-          {isPaidOrAccepted ? "Payment Confirmed & Order Placed!" : "Order Received!"}
-        </h1>
-        <p className="text-slate-500 text-xs max-w-xs">
-          {isPaidOrAccepted
-            ? `${restaurant.name} has received your payment. You'll get WhatsApp updates on your order.`
-            : isPaymentPending
-            ? "Complete your payment to confirm the order. We'll notify you on WhatsApp."
-            : `${restaurant.name} has received your order. You'll get WhatsApp notifications for real-time updates.`}
-        </p>
-        <div className="text-xs font-bold px-3 py-1.5 rounded-full bg-white border border-slate-200 text-slate-700 shadow-xs flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${isPaidOrAccepted ? "bg-emerald-500" : "bg-amber-500 animate-pulse"}`} />
-          {currentLabel}
-        </div>
-        <button
-          onClick={() => setCompletedOrderId(null)}
-          className="mt-2 px-6 py-3 rounded-xl text-white font-extrabold text-sm transition hover:opacity-90 active:scale-95 shadow-sm cursor-pointer"
-          style={{ backgroundColor: primaryColor }}
-        >
-          Order Again 🍽️
-        </button>
-      </div>
+      <OrderTrackingView
+        orderId={completedOrderId}
+        restaurantName={restaurant.name}
+        restaurantPhone={restaurant.phone}
+        restaurantAddress={restaurant.address}
+        googleReviewUrl={data.theme?.googleReviewUrl || null}
+        primaryColor={primaryColor}
+        onOrderAgain={() => setCompletedOrderId(null)}
+      />
     );
   }
 
-  // Client-side filtering: search + veg-only + bestsellers
+  // Client-side filtering: search + filterMode (all, veg, nonveg, popular)
   const filteredCategories = availableCategories
     .map((cat) => {
       let items = cat.items;
@@ -223,13 +254,16 @@ export default function OrderingPage({ params }: Props) {
             (i.description?.toLowerCase().includes(q) ?? false)
         );
       }
-      if (vegOnly) items = items.filter((i) => i.isVeg);
-      if (onlyBestsellers) items = items.filter((i) => i.isBestSeller);
+
+      if (filterMode === "veg") items = items.filter((i) => i.isVeg);
+      if (filterMode === "nonveg") items = items.filter((i) => !i.isVeg);
+      if (filterMode === "popular") items = items.filter((i) => i.isBestSeller);
+
       return { ...cat, items };
     })
     .filter((cat) => cat.items.length > 0);
 
-  const hasActiveFilters = searchQuery.trim() || vegOnly || onlyBestsellers;
+  const hasActiveFilters = searchQuery.trim() || filterMode !== "all";
 
   return (
     <div className="min-h-screen bg-slate-50 pb-28" ref={menuRef}>
@@ -238,12 +272,12 @@ export default function OrderingPage({ params }: Props) {
         restaurant={restaurant}
         theme={theme}
         operationalStatus={operationalStatus}
+        capabilities={capabilities}
+        activeCoupons={data.activeCoupons}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
-        vegOnly={vegOnly}
-        setVegOnly={setVegOnly}
-        onlyBestsellers={onlyBestsellers}
-        setOnlyBestsellers={setOnlyBestsellers}
+        filterMode={filterMode}
+        setFilterMode={setFilterMode}
       />
 
       {/* Category navigation — only shown when no active filter */}
@@ -258,6 +292,13 @@ export default function OrderingPage({ params }: Props) {
 
       {/* Menu sections */}
       <main className="max-w-3xl mx-auto px-4 py-4">
+        {/* Special Value Combos & Deals Section */}
+        {data.activeCombos && data.activeCombos.length > 0 && !hasActiveFilters && (
+          <ComboSection
+            combos={data.activeCombos}
+            onAddComboToCart={(comboCartItem) => cart.addItem(comboCartItem)}
+          />
+        )}
         {filteredCategories.length > 0 ? (
           filteredCategories.map((category) => (
             <MenuSection
@@ -265,7 +306,10 @@ export default function OrderingPage({ params }: Props) {
               category={category}
               primaryColor={primaryColor}
               isOpen={operationalStatus.isOpen}
-              onItemClick={(item) => setSelectedItem(item)}
+              cartQuantities={cartQuantities}
+              onItemClick={handleItemClick}
+              onIncrement={handleIncrement}
+              onDecrement={handleDecrement}
             />
           ))
         ) : (
@@ -274,7 +318,7 @@ export default function OrderingPage({ params }: Props) {
             <p className="text-sm font-semibold text-slate-500">No items found</p>
             <p className="text-xs text-slate-400 mt-1">Try a different search or filter</p>
             <button
-              onClick={() => { setSearchQuery(""); setVegOnly(false); setOnlyBestsellers(false); }}
+              onClick={() => { setSearchQuery(""); setFilterMode("all"); }}
               className="mt-4 text-xs font-bold px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 cursor-pointer"
             >
               Clear Filters
@@ -324,6 +368,9 @@ export default function OrderingPage({ params }: Props) {
           subtotal={cart.subtotal}
           taxPercentage={capabilities.taxes.taxPercentage}
           primaryColor={primaryColor}
+          isOpen={operationalStatus.isOpen}
+          restaurantSlug={restaurantSlug}
+          activeCoupons={data.activeCoupons}
           onClose={() => setCartOpen(false)}
           onUpdateQuantity={cart.updateQuantity}
           onCheckout={() => { setCartOpen(false); setCheckoutOpen(true); }}
@@ -337,6 +384,7 @@ export default function OrderingPage({ params }: Props) {
           capabilities={capabilities}
           primaryColor={primaryColor}
           restaurantSlug={restaurantSlug}
+          restaurantInfo={restaurant}
           onClose={() => setCheckoutOpen(false)}
           onSuccess={(id) => { setCheckoutOpen(false); handleOrderSuccess(id); }}
           onSetOrderMode={cart.setOrderMode}

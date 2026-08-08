@@ -65,6 +65,7 @@ export default function ItemCustomizerModal({ item, primaryColor, onAdd, onClose
       specialInstructions: specialInstructions.trim() || undefined,
       imageUrl: item.imageUrl,
       isVeg: item.isVeg,
+      allowInstructions: item.allowInstructions ?? true,
     };
     onAdd(cartItem);
     onClose();
@@ -79,7 +80,14 @@ export default function ItemCustomizerModal({ item, primaryColor, onAdd, onClose
       <div className="relative bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
         {/* Item image */}
         {item.imageUrl && (
-          <img src={item.imageUrl} alt={item.name} className="w-full h-44 object-cover flex-shrink-0" />
+          <div className="relative w-full h-56 sm:h-72 bg-slate-100 overflow-hidden shrink-0">
+            <img
+              src={item.imageUrl}
+              alt={item.name}
+              className="w-full h-full object-cover object-center"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 via-transparent to-black/20 pointer-events-none z-10" />
+          </div>
         )}
 
         {/* Close button */}
@@ -163,7 +171,21 @@ export default function ItemCustomizerModal({ item, primaryColor, onAdd, onClose
             </section>
           ))}
 
-
+          {/* Special Instructions (Hidden if allowInstructions === false) */}
+          {item.allowInstructions !== false && (
+            <section className="space-y-1.5 pt-2">
+              <label className="text-xs font-bold text-slate-700 block">
+                Special Instructions (Optional)
+              </label>
+              <input
+                type="text"
+                value={specialInstructions}
+                onChange={(e) => setSpecialInstructions(e.target.value)}
+                placeholder="e.g. Less spicy, extra chutney..."
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+              />
+            </section>
+          )}
         </div>
 
         {/* Quantity + Add to Cart */}

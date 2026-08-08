@@ -84,7 +84,12 @@ export function useCart(slug: string) {
   }, []);
 
   const setCustomerInfo = useCallback((name: string, phone: string) => {
-    setCart((prev) => ({ ...prev, customerName: name, customerPhone: phone }));
+    setCart((prev) => ({
+      ...prev,
+      customerName: name,
+      customerPhone: phone,
+      whatsappJid: phone && !phone.includes("@") ? undefined : prev.whatsappJid,
+    }));
   }, []);
 
   const setWhatsappJid = useCallback((jid: string) => {

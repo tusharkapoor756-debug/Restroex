@@ -295,63 +295,6 @@ export default function ProductionSettingsPage() {
             <Input label="WhatsApp Support Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
             <Input label="Store Address" value={address} onChange={(e) => setAddress(e.target.value)} />
           </div>
-
-          {/* V1 OPERATIONS ENGINE SETTINGS SECTION */}
-          <div className="border-t border-slate-100 dark:border-slate-800 pt-6 space-y-4">
-            <div>
-              <h4 className="font-heading font-bold text-sm text-slate-900 dark:text-slate-100">Restaurant Operations & Order Modes</h4>
-              <p className="text-xs text-slate-500">Configure enabled ordering modes, kitchen capacity, and table count</p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 bg-slate-50/50 dark:bg-slate-950/50">
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block">Supported Order Modes</span>
-                <div className="flex flex-col gap-2 pt-1 text-xs">
-                  <label className="flex items-center gap-2 cursor-pointer font-medium text-slate-800 dark:text-slate-200">
-                    <input
-                      type="checkbox"
-                      checked={takeawayEnabled}
-                      onChange={(e) => setTakeawayEnabled(e.target.checked)}
-                      className="rounded text-brand-600 focus:ring-brand-500 h-4 w-4"
-                    />
-                    <span>🥡 Takeaway (Pickup)</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer font-medium text-slate-800 dark:text-slate-200">
-                    <input
-                      type="checkbox"
-                      checked={diningEnabled}
-                      onChange={(e) => setDiningEnabled(e.target.checked)}
-                      className="rounded text-brand-600 focus:ring-brand-500 h-4 w-4"
-                    />
-                    <span>🍽️ Dining (Eat at restaurant)</span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3 bg-slate-50/50 dark:bg-slate-950/50">
-                <div>
-                  <Input
-                    label="Max Active Orders Capacity (Kitchen Limit)"
-                    type="number"
-                    min={1}
-                    value={maxActiveOrders}
-                    onChange={(e) => setMaxActiveOrders(parseInt(e.target.value, 10) || 1)}
-                  />
-                  <p className="text-[10px] text-slate-500 mt-1">Only counts orders in received, accepted, or preparing status</p>
-                </div>
-                <div>
-                  <Input
-                    label="Total Dining Tables"
-                    type="number"
-                    min={1}
-                    value={totalTables}
-                    onChange={(e) => setTotalTables(parseInt(e.target.value, 10) || 1)}
-                  />
-                  <p className="text-[10px] text-slate-500 mt-1">Valid table numbers allowed during WhatsApp checkout</p>
-                </div>
-              </div>
-            </div>
-          </div>
         </Card>
       )}
 

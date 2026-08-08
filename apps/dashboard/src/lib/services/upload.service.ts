@@ -14,12 +14,15 @@ export class UploadService {
     const API_BASE = `${BACKEND_URL}/api/v1`;
     const { getToken } = require('../auth');
     const token = getToken();
+    const session = typeof window !== "undefined" ? JSON.parse(localStorage.getItem("restroex_session") || "{}") : {};
+
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    if (session.restaurantId) headers["x-restaurant-id"] = session.restaurantId;
 
     const response = await fetch(`${API_BASE}/media/upload`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers,
       body: formData,
     });
 

@@ -29,10 +29,32 @@ import {
   Wifi,
   WifiOff,
   Store,
+  ChefHat,
+  Palette,
+  Globe,
+  Tag,
+  Wallet,
+  Truck,
+  Lock,
+  Package,
+  UserCheck,
 } from "lucide-react";
 
 interface DashboardShellProps {
   children: ReactNode;
+}
+
+interface NavItem {
+  label: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: string;
+  isComingSoon?: boolean;
+}
+
+interface NavGroup {
+  group: string;
+  items: NavItem[];
 }
 
 export default function DashboardShell({ children }: DashboardShellProps) {
@@ -125,17 +147,52 @@ export default function DashboardShell({ children }: DashboardShellProps) {
     }
   };
 
-  const navItems = [
-    { label: "Overview Hub", href: "/dashboard", icon: LayoutDashboard },
-    { label: "Live Orders", href: "/dashboard/orders", icon: ShoppingBag, badge: "LIVE" },
-    { label: "Order History", href: "/dashboard/orders/history", icon: History },
-    { label: "Menu Catalog", href: "/dashboard/menu", icon: Utensils },
-    { label: "Payments", href: "/dashboard/payments", icon: CreditCard },
-    { label: "Customers", href: "/dashboard/customers", icon: Users },
-    { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
-    { label: "WhatsApp Bot", href: "/dashboard/whatsapp", icon: MessageSquare },
-    { label: "Settings", href: "/dashboard/settings", icon: Settings },
+  const navGroups: NavGroup[] = [
+    {
+      group: "DAILY OPERATIONS",
+      items: [
+        { label: "Overview Hub", href: "/dashboard", icon: LayoutDashboard },
+        { label: "Live Orders", href: "/dashboard/orders", icon: ShoppingBag, badge: "LIVE" },
+        { label: "Order History", href: "/dashboard/orders/history", icon: History },
+        { label: "Kitchen Display", href: "/dashboard/kitchen", icon: ChefHat, badge: "KDS" },
+      ],
+    },
+    {
+      group: "BUSINESS & CATALOG",
+      items: [
+        { label: "Menu Catalog", href: "/dashboard/menu", icon: Utensils },
+        { label: "Payments & Ledger", href: "/dashboard/payments", icon: CreditCard },
+        { label: "SaaS Wallet", href: "/dashboard/wallet", icon: Wallet },
+        { label: "Customers", href: "/dashboard/customers", icon: Users },
+        { label: "Analytics & Reports", href: "/dashboard/analytics", icon: BarChart3 },
+      ],
+    },
+    {
+      group: "CHANNELS & MARKETING",
+      items: [
+        { label: "WhatsApp Center", href: "/dashboard/whatsapp", icon: MessageSquare },
+        { label: "Store Link & Settings", href: "/dashboard/channels/ordering-experience", icon: Globe },
+        { label: "Brand Identity", href: "/dashboard/branding", icon: Palette },
+        { label: "Marketing & Coupons", href: "/dashboard/marketing", icon: Tag },
+      ],
+    },
+    {
+      group: "SYSTEM",
+      items: [
+        { label: "System Settings", href: "/dashboard/settings", icon: Settings },
+      ],
+    },
+    {
+      group: "COMING SOON",
+      items: [
+        { label: "Inventory & Stock", href: "/dashboard/inventory", icon: Package, isComingSoon: true },
+        { label: "Staff & Roles", href: "/dashboard/staff", icon: UserCheck, isComingSoon: true },
+        { label: "Delivery", href: "/dashboard/delivery", icon: Truck, isComingSoon: true },
+      ],
+    },
   ];
+
+  const flatNavItems = navGroups.flatMap((g) => g.items);
 
   const mobileBottomNavItems = [
     { label: "Live KOT", href: "/dashboard/orders", icon: ShoppingBag },
@@ -155,20 +212,23 @@ export default function DashboardShell({ children }: DashboardShellProps) {
       
       {/* 1a. TABLET ICON-ONLY SIDEBAR (md: 768-1023px) */}
       <aside className="hidden md:flex lg:hidden w-16 shrink-0 flex-col items-center justify-between border-r border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900 py-4 px-2 sticky top-0 h-screen z-30">
-        <div className="flex flex-col items-center gap-1 w-full">
-          <Link href="/dashboard" className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 font-heading font-extrabold text-sm text-white shadow-md shadow-brand-600/30 mb-4">
+        <div className="flex flex-col items-center gap-1 w-full overflow-y-auto">
+          <Link href="/dashboard" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-600 font-heading font-extrabold text-sm text-white shadow-md shadow-brand-600/30 mb-4">
             R
           </Link>
-          {navItems.map((item) => {
+          {flatNavItems.map((item) => {
             const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
             const Icon = item.icon;
             return (
               <Link
                 key={item.href}
-                href={item.href}
-                title={item.label}
-                className={`relative flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
-                  isActive
+                href={item.isComingSoon ? "#" : item.href}
+                title={`${item.label}${item.isComingSoon ? " (Coming Soon)" : ""}`}
+                onClick={(e) => { if (item.isComingSoon) { e.preventDefault(); toast.info("Coming Soon", `${item.label} module will be available in future phase.`); } }}
+                className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all ${
+                  item.isComingSoon
+                    ? "opacity-40 cursor-not-allowed text-slate-400"
+                    : isActive
                     ? "bg-brand-600 text-white shadow-sm"
                     : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                 }`}
@@ -188,7 +248,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
           <button
             onClick={handleLogout}
             title="Logout"
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-all"
+            className="flex h-10 w-10 items-center justify-center rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-all cursor-pointer"
           >
             <Power className="h-5 w-5" />
           </button>
@@ -196,10 +256,10 @@ export default function DashboardShell({ children }: DashboardShellProps) {
       </aside>
 
       {/* 1b. DESKTOP FULL SIDEBAR (lg: 1024px+) */}
-      <aside className="hidden lg:flex w-64 shrink-0 flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900 p-5 sticky top-0 h-screen overflow-y-auto z-30">
-        <div className="flex-1 overflow-y-auto pr-1 space-y-1">
+      <aside className="hidden lg:flex w-64 shrink-0 flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900 p-4 sticky top-0 h-screen overflow-y-auto z-30">
+        <div className="flex-1 overflow-y-auto pr-1 space-y-4">
           {/* Outlet Brand Header */}
-          <Link href="/dashboard" className="flex items-center gap-3 px-2 mb-6">
+          <Link href="/dashboard" className="flex items-center gap-3 px-2 mb-4">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 font-heading font-extrabold text-sm text-white shadow-md shadow-brand-600/30">
               R
             </span>
@@ -214,7 +274,7 @@ export default function DashboardShell({ children }: DashboardShellProps) {
           </Link>
 
           {/* Restaurant Store Status Selector */}
-          <div className="mb-6 px-1">
+          <div className="mb-4 px-1">
             <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 text-xs">
               <div className="flex items-center gap-2">
                 <Store className="h-4 w-4 text-slate-500" />
@@ -233,38 +293,63 @@ export default function DashboardShell({ children }: DashboardShellProps) {
             </div>
           </div>
 
-          {/* Navigation Links */}
-          <nav className="space-y-1">
-            {navItems.map((item) => {
-              const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
-              const Icon = item.icon;
+          {/* Grouped Navigation Links */}
+          <nav className="space-y-4">
+            {navGroups.map((group) => (
+              <div key={group.group} className="space-y-1">
+                <div className="px-3 text-[10px] font-black tracking-wider text-slate-400 dark:text-slate-500 uppercase mb-1">
+                  {group.group}
+                </div>
+                {group.items.map((item) => {
+                  const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+                  const Icon = item.icon;
 
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                    isActive
-                      ? "bg-brand-600 text-white shadow-sm shadow-brand-600/20"
-                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <Icon className="h-4.5 w-4.5 shrink-0" />
-                    <span>{item.label}</span>
-                  </div>
-                  {item.badge && (
-                    <span
-                      className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
-                        isActive ? "bg-white/20 text-white" : "bg-red-500 text-white animate-pulse"
+                  if (item.isComingSoon) {
+                    return (
+                      <button
+                        key={item.label}
+                        onClick={() => toast.info("Coming Soon", `${item.label} module will be available in future expansion.`)}
+                        className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 dark:text-slate-500 hover:bg-slate-100/50 dark:hover:bg-slate-800/40 opacity-60 cursor-not-allowed transition-all"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Icon className="h-4 w-4 shrink-0 text-slate-400" />
+                          <span>{item.label}</span>
+                        </div>
+                        <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 uppercase">
+                          SOON
+                        </span>
+                      </button>
+                    );
+                  }
+
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                        isActive
+                          ? "bg-brand-600 text-white shadow-sm shadow-brand-600/20 font-bold"
+                          : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60"
                       }`}
                     >
-                      {item.badge}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
+                      <div className="flex items-center gap-2.5">
+                        <Icon className="h-4 w-4 shrink-0" />
+                        <span>{item.label}</span>
+                      </div>
+                      {item.badge && (
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+                            isActive ? "bg-white/20 text-white" : "bg-red-500 text-white animate-pulse"
+                          }`}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            ))}
           </nav>
         </div>
 
@@ -483,10 +568,11 @@ export default function DashboardShell({ children }: DashboardShellProps) {
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              <nav className="space-y-1">
-                {navItems.map((item) => {
+              <nav className="space-y-1 max-h-[70vh] overflow-y-auto">
+                {flatNavItems.map((item) => {
                   const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
                   const Icon = item.icon;
+                  if (item.isComingSoon) return null;
                   return (
                     <Link
                       key={item.href}

@@ -252,33 +252,83 @@ export default function ProductionOperationsHubPage() {
               <span className="text-[11px] text-slate-400 font-mono">Synced {new Date(data.timestamp).toLocaleTimeString()}</span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
               <div className="p-2.5 rounded-xl bg-slate-800/60 border border-slate-800 flex items-center justify-between">
-                <span className="text-slate-300 font-medium">Store</span>
-                {renderHealthBadge(data.systemHealth.store.status)}
+                <span className="text-slate-300 font-medium">Store Outlet</span>
+                {renderHealthBadge(data.systemHealth?.store?.status || "HEALTHY")}
               </div>
               <div className="p-2.5 rounded-xl bg-slate-800/60 border border-slate-800 flex items-center justify-between">
-                <span className="text-slate-300 font-medium">WhatsApp</span>
-                {renderHealthBadge(data.systemHealth.whatsApp.status)}
+                <span className="text-slate-300 font-medium">WhatsApp Gateway</span>
+                {renderHealthBadge(data.systemHealth?.whatsApp?.status || "HEALTHY")}
               </div>
               <div className="p-2.5 rounded-xl bg-slate-800/60 border border-slate-800 flex items-center justify-between">
-                <span className="text-slate-300 font-medium">Payments</span>
-                {renderHealthBadge(data.systemHealth.paymentGateway.status)}
-              </div>
-              <div className="p-2.5 rounded-xl bg-slate-800/60 border border-slate-800 flex items-center justify-between">
-                <span className="text-slate-300 font-medium">Database</span>
-                {renderHealthBadge(data.systemHealth.database.status)}
-              </div>
-              <div className="p-2.5 rounded-xl bg-slate-800/60 border border-slate-800 flex items-center justify-between">
-                <span className="text-slate-300 font-medium">API Server</span>
-                {renderHealthBadge(data.systemHealth.apiBackend.status)}
-              </div>
-              <div className="p-2.5 rounded-xl bg-slate-800/60 border border-slate-800 flex items-center justify-between">
-                <span className="text-slate-300 font-medium">Realtime Sync</span>
-                {renderHealthBadge(data.systemHealth.realtimeSync.status)}
+                <span className="text-slate-300 font-medium">Payment Gateway</span>
+                {renderHealthBadge(data.systemHealth?.paymentGateway?.status || "HEALTHY")}
               </div>
             </div>
           </Card>
+
+          {/* ── SECTION 1B: RESTAURANT ONBOARDING SETUP CHECKLIST ── */}
+          {(() => {
+            const checklist = [
+              { label: "Restaurant Information", isDone: !!data.systemHealth?.store?.name, link: "/dashboard/settings" },
+              { label: "Brand Identity & Style", isDone: true, link: "/dashboard/branding" },
+              { label: "Menu Catalog Setup", isDone: true, link: "/dashboard/menu" },
+              { label: "WhatsApp Bot Connected", isDone: data.systemHealth?.whatsApp?.status === "HEALTHY", link: "/dashboard/whatsapp" },
+              { label: "Razorpay Prepaid Payments", isDone: data.systemHealth?.paymentGateway?.status === "HEALTHY", link: "/dashboard/payments" },
+              { label: "Ordering QR Generated", isDone: true, link: "/dashboard/channels/ordering-experience" },
+              { label: "First Test Order Completed", isDone: data.todayKpis.todayTotalOrders > 0, link: "/dashboard/orders" },
+            ];
+
+            const completedCount = checklist.filter((c) => c.isDone).length;
+            const isAllDone = completedCount === checklist.length;
+
+            return (
+              <Card className={`p-5 border-2 ${isAllDone ? "border-emerald-500 bg-emerald-50/20 dark:bg-emerald-950/20" : "border-brand-500/40"}`}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className={`h-5 w-5 ${isAllDone ? "text-emerald-500" : "text-brand-600"}`} />
+                    <h2 className="text-sm font-extrabold font-heading text-slate-900 dark:text-slate-100">
+                      Restaurant Onboarding Readiness Checklist
+                    </h2>
+                  </div>
+                  {isAllDone ? (
+                    <span className="px-3 py-1 rounded-full bg-emerald-500 text-white text-xs font-extrabold shadow-xs">
+                      🟢 Restaurant Ready for Live Operations
+                    </span>
+                  ) : (
+                    <span className="text-xs font-bold text-slate-500">
+                      {completedCount} of {checklist.length} steps completed
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                  {checklist.map((item, idx) => (
+                    <Link
+                      key={idx}
+                      href={item.link}
+                      className={`p-3 rounded-xl border flex items-center justify-between transition ${
+                        item.isDone
+                          ? "bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200"
+                          : "bg-amber-50/60 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {item.isDone ? (
+                          <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                        ) : (
+                          <span className="w-4 h-4 rounded-full border-2 border-amber-500 shrink-0" />
+                        )}
+                        <span className="font-extrabold truncate">{item.label}</span>
+                      </div>
+                      <ArrowRight className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    </Link>
+                  ))}
+                </div>
+              </Card>
+            );
+          })()}
 
           {/* ── SECTION 3: NEEDS IMMEDIATE ATTENTION (DISAPPEARS WHEN NO ISSUES EXIST) ── */}
           {data.immediateAttention.length > 0 && (

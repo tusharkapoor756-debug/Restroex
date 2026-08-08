@@ -30,10 +30,14 @@ router.use(receiptRoutes);
 import uploadRoutes from './upload.routes';
 import publicOrderingRoutes from './public-ordering.routes';
 import billingRoutes from './billing.routes';
+import couponRoutes from './coupon.routes';
+import comboRoutes from './combo.routes';
 
 router.use('/media', uploadRoutes);
 router.use('/public', publicOrderingRoutes);
 router.use('/billing', billingRoutes);
+router.use('/marketing', couponRoutes);
+router.use(comboRoutes);
 
 
 // Feature modules will be registered here:

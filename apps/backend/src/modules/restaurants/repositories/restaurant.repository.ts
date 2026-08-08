@@ -139,25 +139,67 @@ export class RestaurantRepository {
   }
 
   public async findBySlugOrId(identifier: string): Promise<Restaurant | null> {
-    // 1. Try finding by ID
-    const byId = await this.findById(identifier).catch(() => null);
-    if (byId) return byId;
+    if (!identifier) return null;
 
-    // 2. Try finding by slug column if present, or generated slug match
-    const { data, error } = await this.client
-      .from('restaurants')
-      .select('*')
-      .or(`id.eq.${identifier},name.ilike.%${identifier.replace(/-/g, ' ')}%`)
-      .limit(1)
-      .maybeSingle();
+    const cleanIdentifier = identifier.trim();
 
-    if (error || !data) {
-      // Return first active restaurant as fallback if identifier is 'demo' or default
-      const fallback = await this.client.from('restaurants').select('*').eq('is_active', true).limit(1).maybeSingle();
+    // 1. Try finding by exact ID if valid UUID
+    const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(cleanIdentifier);
+    if (isUuid) {
+      const byId = await this.findById(cleanIdentifier).catch(() => null);
+      if (byId) return byId;
+    }
+
+    // 2. Try finding by id eq string (if non-uuid primary key)
+    try {
+      const { data: byRawId } = await this.client
+        .from('restaurants')
+        .select('*')
+        .eq('id', cleanIdentifier)
+        .maybeSingle();
+
+      if (byRawId) return this.mapToDomain(byRawId);
+    } catch {}
+
+    // 3. Try finding by slug column if present in table
+    try {
+      const { data: bySlug } = await this.client
+        .from('restaurants')
+        .select('*')
+        .eq('slug', cleanIdentifier)
+        .maybeSingle();
+
+      if (bySlug) return this.mapToDomain(bySlug);
+    } catch {}
+
+    // 4. Try fuzzy name match e.g. "tushar-chaap-corner" -> "tushar chaap corner"
+    const searchName = cleanIdentifier.replace(/^rest[-_]/gi, '').replace(/-/g, ' ');
+    if (searchName.length >= 2) {
+      try {
+        const { data: byName } = await this.client
+          .from('restaurants')
+          .select('*')
+          .ilike('name', `%${searchName}%`)
+          .limit(1)
+          .maybeSingle();
+
+        if (byName) return this.mapToDomain(byName);
+      } catch {}
+    }
+
+    // 5. Fallback ONLY if identifier is 'demo' or 'default'
+    if (cleanIdentifier === 'demo' || cleanIdentifier === 'default') {
+      const fallback = await this.client
+        .from('restaurants')
+        .select('*')
+        .eq('is_active', true)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
       return fallback.data ? this.mapToDomain(fallback.data) : null;
     }
 
-    return this.mapToDomain(data);
+    return null;
   }
 
   private isMissingPhoneNumberColumnError(message: string): boolean {

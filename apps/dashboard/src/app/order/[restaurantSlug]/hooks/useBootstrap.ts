@@ -2,7 +2,7 @@
 
 // apps/dashboard/src/app/order/[restaurantSlug]/hooks/useBootstrap.ts
 // Fetches the single bootstrap payload from the backend.
-// No auth token required — this is a public endpoint.
+// Hardened with AbortController signal to prevent memory leaks on unmount.
 
 import { useEffect, useState } from "react";
 import { BootstrapData } from "../types";
@@ -16,18 +16,28 @@ export function useBootstrap(slug: string) {
 
   useEffect(() => {
     if (!slug) return;
+    const controller = new AbortController();
     setLoading(true);
-    fetch(`${BACKEND_URL}/api/v1/public/restaurants/${encodeURIComponent(slug)}/bootstrap`)
+
+    fetch(`${BACKEND_URL}/api/v1/public/restaurants/${encodeURIComponent(slug)}/bootstrap`, {
+      signal: controller.signal,
+    })
       .then((res) => {
-        if (!res.ok) throw new Error(`Bootstrap failed: ${res.status}`);
+        if (!res.ok) throw new Error(`Bootstrap failed (${res.status})`);
         return res.json();
       })
       .then((json) => {
         setData(json.data as BootstrapData);
         setError(null);
       })
-      .catch((err) => setError(err.message || "Failed to load restaurant"))
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          setError(err.message || "Failed to load restaurant menu");
+        }
+      })
       .finally(() => setLoading(false));
+
+    return () => controller.abort();
   }, [slug]);
 
   return { data, loading, error };

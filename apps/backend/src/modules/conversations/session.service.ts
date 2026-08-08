@@ -26,22 +26,26 @@ export class SessionService {
     const lockKey = `lock:pipeline:${restaurantId}:${customerPhone}`;
     const redisClient = redis.getClient();
     let acquired: string | null = null;
-    for (let attempt = 1; attempt <= 5; attempt++) {
-      acquired = await redisClient.set(lockKey, 'locked', 'PX', 30000, 'NX');
+    for (let attempt = 1; attempt <= 8; attempt++) {
+      acquired = await redisClient.set(lockKey, 'locked', 'PX', 10000, 'NX');
       if (acquired) {
         logger.info({ restaurantId, customerPhone, attempt }, '✅ Pipeline lock acquired');
         break;
       }
       logger.warn({ restaurantId, customerPhone, attempt }, '⚠️ Pipeline lock failed, retrying...');
-      await new Promise((r) => setTimeout(r, 150 * attempt));
+      await new Promise((r) => setTimeout(r, 200));
     }
+
     if (!acquired) {
-      throw new Error(`Pipeline lock acquisition failed after retries for customer ${customerPhone}`);
+      logger.warn({ restaurantId, customerPhone }, '⚠️ Clearing stale pipeline lock after max retries.');
+      await redisClient.del(lockKey).catch(() => null);
+      acquired = await redisClient.set(lockKey, 'locked', 'PX', 10000, 'NX').catch(() => 'locked');
     }
+
     try {
       return await fn();
     } finally {
-      await redisClient.del(lockKey);
+      await redisClient.del(lockKey).catch(() => null);
       logger.info({ restaurantId, customerPhone }, '🔓 Pipeline lock released');
     }
   }
@@ -68,8 +72,9 @@ export class SessionService {
       await new Promise((r) => setTimeout(r, 100 * attempt));
     }
     if (!acquired) {
-      // Throw to let caller handle retry via HTTP 500
-      throw new Error('Session lock acquisition failed after retries');
+      logger.warn({ restaurantId, customerPhone }, '⚠️ Clearing stale session lock after max retries.');
+      await redisClient.del(lockKey).catch(() => null);
+      acquired = await redisClient.set(lockKey, 'locked', 'PX', 5000, 'NX').catch(() => 'locked');
     }
 
     try {

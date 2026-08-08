@@ -9,10 +9,10 @@ export interface SystemHealthMatrix {
   store: { status: "HEALTHY" | "WARNING" | "OFFLINE"; isStoreOpen: boolean; name: string };
   whatsApp: { status: "HEALTHY" | "WARNING" | "OFFLINE"; gateway: string };
   paymentGateway: { status: "HEALTHY" | "WARNING"; failedCountToday: number };
-  database: { status: "HEALTHY" | "ERROR" };
-  apiBackend: { status: "HEALTHY" };
-  realtimeSync: { status: "HEALTHY" };
-  backgroundQueue: { status: "HEALTHY" | "WARNING" };
+  database?: { status: "HEALTHY" | "ERROR" };
+  apiBackend?: { status: "HEALTHY" };
+  realtimeSync?: { status: "HEALTHY" };
+  backgroundQueue?: { status: "HEALTHY" | "WARNING" };
 }
 
 export interface TodayKpis {

@@ -24,11 +24,11 @@ export interface RestaurantSettings {
   pickupInstructions?: string;
 
   // V1 Operations Engine Settings
-  supportedOrderModes: string[]; // e.g. ['takeaway', 'dining'] or ['takeaway'] or ['dining']
-  maxActiveOrders: number; // Maximum active kitchen capacity (received, accepted, preparing)
+  supportedOrderModes: string[]; // e.g. ['takeaway', 'dining']
+  maxActiveOrders: number; // Maximum active kitchen capacity
   totalTables: number; // Total physical dining tables for validation
 
-  // New Settings Fields
+  // Settings Fields
   invoicePrefix?: string;
   receiptFooter?: string;
   supportPhone?: string;
@@ -44,7 +44,13 @@ export interface RestaurantSettings {
 }
 
 export interface BusinessProfile {
+  slug?: string;
   logoUrl?: string;
+  coverImageUrl?: string;
+  primaryColor?: string;
+  restaurantStory?: string;
+  googleReviewUrl?: string;
+  galleryImages?: string[];
   name: string;
   ownerName?: string;
   phoneNumber: string;

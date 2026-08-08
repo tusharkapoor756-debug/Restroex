@@ -29,6 +29,8 @@ router.get(
     const data = await bootstrapService.getBootstrapData(slug);
     res.json({
       success: true,
+      version: '2.0.0',
+      schemaVersion: 2,
       data,
     });
   })
@@ -215,6 +217,37 @@ router.get(
         tableNumber: order.tableNumber,
         createdAt: order.createdAt,
       },
+    });
+  })
+);
+
+/**
+ * Public Coupon Validation Endpoint
+ * POST /api/v1/public/coupons/validate
+ */
+router.post(
+  '/coupons/validate',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { restaurantSlug, code, orderSubtotal } = req.body;
+    if (!restaurantSlug || !code) {
+      throw new BadRequestError('restaurantSlug and code are required');
+    }
+
+    const restaurant = await restaurantRepo.findBySlugOrId(restaurantSlug);
+    if (!restaurant) {
+      throw new BadRequestError(`Restaurant '${restaurantSlug}' not found`);
+    }
+
+    const { couponService } = require('../modules/marketing/services/coupon.service');
+    const result = await couponService.validateCoupon(
+      restaurant.id,
+      code,
+      Number(orderSubtotal || 0)
+    );
+
+    res.json({
+      success: true,
+      data: result,
     });
   })
 );

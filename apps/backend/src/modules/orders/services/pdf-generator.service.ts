@@ -23,37 +23,62 @@ export interface PdfRenderOptions {
 }
 
 export class PdfGeneratorService {
+  private static sharedBrowser: any = null;
+  private static sharedBrowserPromise: Promise<any> | null = null;
+
   /**
-   * Generates a 100% valid binary PDF Buffer (%PDF-) with dynamic MediaBox calculation.
-   * Eliminates A4 page whitespace by wrapping content in thermal roll canvas bounds.
+   * Returns a warm shared Puppeteer browser instance, eliminating cold-start Chrome process launch latency.
    */
+  private async getSharedBrowser(): Promise<any> {
+    if (PdfGeneratorService.sharedBrowser && PdfGeneratorService.sharedBrowser.isConnected()) {
+      return PdfGeneratorService.sharedBrowser;
+    }
+
+    if (PdfGeneratorService.sharedBrowserPromise) {
+      return PdfGeneratorService.sharedBrowserPromise;
+    }
+
+    const puppeteer = require('puppeteer');
+    logger.info('🚀 Warming up shared Chrome browser instance for instant PDF generation...');
+
+    PdfGeneratorService.sharedBrowserPromise = puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--no-first-run',
+        '--no-zygote',
+      ],
+    }).then((browser: any) => {
+      PdfGeneratorService.sharedBrowser = browser;
+      PdfGeneratorService.sharedBrowserPromise = null;
+      browser.on('disconnected', () => {
+        PdfGeneratorService.sharedBrowser = null;
+        PdfGeneratorService.sharedBrowserPromise = null;
+      });
+      return browser;
+    }).catch((err: any) => {
+      PdfGeneratorService.sharedBrowserPromise = null;
+      throw err;
+    });
+
+    return PdfGeneratorService.sharedBrowserPromise;
+  }
+
   /**
    * Renders exact HTML/CSS thermal receipt layout directly to PDF Buffer matching exact paper width & content height.
    * Zero unused white margins; 100% natural readable thermal slip scale on mobile & desktop viewers.
    */
   public async generatePdfFromHtml(htmlContent: string, paperWidthOption: '58mm' | '80mm' | 'a4' = '80mm'): Promise<Buffer> {
-    const puppeteer = require('puppeteer');
-    const execPath = typeof puppeteer.executablePath === 'function' ? puppeteer.executablePath() : 'unknown';
-    logger.info({ paperWidthOption, executablePath: execPath }, '🔍 [PUPPETEER DIAGNOSTIC 1] Step 1: Loaded Puppeteer module');
+    const browser = await this.getSharedBrowser();
+    const page = await browser.newPage();
 
-    let browser;
     try {
-      logger.info({ args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] }, '🔍 [PUPPETEER DIAGNOSTIC 2] Step 2: Attempting puppeteer.launch()...');
-      browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-      });
-      logger.info({ connected: browser.isConnected() }, '✅ [PUPPETEER DIAGNOSTIC 3] Step 3: Browser launched successfully');
-
-      const page = await browser.newPage();
-      logger.info('✅ [PUPPETEER DIAGNOSTIC 4] Step 4: New browser page created successfully');
-
       const viewportWidthPx = paperWidthOption === '58mm' ? 384 : paperWidthOption === 'a4' ? 794 : 460;
       await page.setViewport({ width: viewportWidthPx, height: 800, deviceScaleFactor: 2 });
-      logger.info({ viewportWidthPx }, '✅ [PUPPETEER DIAGNOSTIC 5] Step 5: Viewport configured');
-
-      await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
-      logger.info('✅ [PUPPETEER DIAGNOSTIC 6] Step 6: page.setContent() completed successfully');
+      await page.setContent(htmlContent, { waitUntil: 'load' });
 
       const contentHeightPx = await page.evaluate(() => {
         const doc = (globalThis as any).document;
@@ -61,12 +86,10 @@ export class PdfGeneratorService {
         const rect = el.getBoundingClientRect();
         return Math.ceil(Math.max(rect.height, el.scrollHeight, el.offsetHeight)) + 4;
       });
-      logger.info({ contentHeightPx }, '✅ [PUPPETEER DIAGNOSTIC 7] Step 7: Bounding box height measured');
 
       const widthString = paperWidthOption === '58mm' ? '58mm' : paperWidthOption === 'a4' ? '210mm' : '80mm';
       const heightString = paperWidthOption === 'a4' ? '297mm' : `${contentHeightPx}px`;
 
-      logger.info({ widthString, heightString }, '🔍 [PUPPETEER DIAGNOSTIC 8] Step 8: Calling page.pdf() for infinite roll...');
       const pdfBuffer = await page.pdf({
         width: widthString,
         height: heightString,
@@ -75,24 +98,13 @@ export class PdfGeneratorService {
         pageRanges: '1',
         margin: { top: '0px', bottom: '0px', left: '0px', right: '0px' },
       });
-      logger.info({ bufferSize: pdfBuffer.length }, '✅ [PUPPETEER DIAGNOSTIC 9] Step 9: page.pdf() generated buffer successfully');
 
-      await browser.close();
-      logger.info('✅ [PUPPETEER DIAGNOSTIC 10] Step 10: Browser closed cleanly');
       return Buffer.from(pdfBuffer);
     } catch (err: any) {
-      logger.error(
-        {
-          errorMessage: err?.message,
-          errorName: err?.name,
-          errorStack: err?.stack,
-          executablePath: execPath,
-          paperWidthOption,
-        },
-        '❌ [PUPPETEER DIAGNOSTIC FAILURE] Exception occurred during PDF generation'
-      );
-      if (browser) await browser.close().catch(() => {});
+      logger.error({ errorMessage: err?.message, paperWidthOption }, '❌ Exception occurred during PDF generation');
       throw err;
+    } finally {
+      await page.close().catch(() => {});
     }
   }
 
