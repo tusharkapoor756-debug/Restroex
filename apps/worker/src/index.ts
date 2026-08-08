@@ -163,7 +163,8 @@ const bootstrap = async () => {
   logger.info('🚀 Starting Restroex Background Worker Runtime...');
 
   try {
-    startWhatsAppIncomingWorker();
+    // Note: whatsapp-incoming queue is processed by backend worker (apps/backend/src/infrastructure/queue/workers/whatsapp-incoming.worker.ts)
+    // which includes message debouncing and botReplyService dispatch.
     startAIProcessingWorker();
     startNotificationsWorker();
     startOrderProcessingWorker();
